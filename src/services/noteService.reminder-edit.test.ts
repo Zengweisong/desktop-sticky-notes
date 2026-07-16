@@ -15,9 +15,11 @@ vi.mock("./reminderService", () => ({
 }));
 
 import { updateNote } from "./noteService";
+import { ReminderService } from "./reminderService";
 
 describe("editing a reminder through the pooled Tauri database", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     db.select.mockReset();
     db.execute.mockReset();
     db.select
@@ -42,6 +44,37 @@ describe("editing a reminder through the pooled Tauri database", () => {
     })).resolves.toBeUndefined();
 
     expect(db.execute.mock.calls.flat().join(" ")).not.toMatch(/BEGIN|COMMIT|ROLLBACK/);
+    expect(ReminderService.updateReminder).toHaveBeenCalledWith(7, expect.objectContaining({
+      reminderEnabled: true,
+      reminderOffsetMinutes: 60
+    }));
+    const updateCall = db.execute.mock.calls.find(([sql]) => sql.includes("UPDATE notes SET content"));
+    expect(updateCall?.[1]).toEqual([
+      "提交周报", "发送给团队", 1, "normal", null,
+      "2026-07-20T08:00:00.000Z", 1, "2026-07-20T07:00:00.000Z",
+      60, "series", expect.any(String), 7
+    ]);
+  });
+
+  it("cancels and clears a reminder when reminder is disabled", async () => {
+    await expect(updateNote(7, {
+      title: "提交周报",
+      categoryId: 1,
+      priority: "normal",
+      scheduledAt: "2026-07-20T08:00:00.000Z",
+      reminderEnabled: false,
+      reminderOffsetMinutes: 60,
+      repeatEnabled: false
+    })).resolves.toBeUndefined();
+
+    expect(ReminderService.cancelReminder).toHaveBeenCalledWith(7);
+    expect(ReminderService.updateReminder).not.toHaveBeenCalled();
+    const updateCall = db.execute.mock.calls.find(([sql]) => sql.includes("UPDATE notes SET content"));
+    expect(updateCall?.[1]).toEqual([
+      "提交周报", null, 1, "normal", null,
+      "2026-07-20T08:00:00.000Z", 0, null,
+      60, "series", expect.any(String), 7
+    ]);
   });
 });
 
