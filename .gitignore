@@ -1,0 +1,10 @@
+node_modules
+dist
+src-tauri/target
+*.log
+.DS_Store
+.gstack/
+*.exe
+*.db
+*.db-shm
+*.db-wal

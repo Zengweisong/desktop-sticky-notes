@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "桌面便签",
+  "version": "0.1.0",
+  "identifier": "com.desktopnotes.stickynotes",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "桌面便签",
+        "width": 360,
+        "height": 520,
+        "minWidth": 300,
+        "minHeight": 320,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "backgroundColor": [0, 0, 0, 0],
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "center": true
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "plugins": {
+    "sql": {
+      "preload": ["sqlite:desktop-notes.db"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
+    "shortDescription": "轻量桌面便签和待办事项工具",
+    "longDescription": "支持全局快捷键、系统托盘、本地 SQLite 数据和多主题的桌面便签。",
+    "windows": { "nsis": { "languages": ["SimpChinese"] } }
+  }
+}
