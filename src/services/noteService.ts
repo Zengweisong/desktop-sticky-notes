@@ -102,40 +102,33 @@ export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
       ? await ReminderService.updateReminder(id, input)
       : (await ReminderService.cancelReminder(id), null);
     const categoryId = await resolveCategoryId(input.categoryId);
-    await db.execute("BEGIN IMMEDIATE");
-    try {
-      if (input.repeatEnabled) {
-        if (current.repeatSeriesId != null) {
-          if (input.repeatEditScope !== "occurrence") {
-            await updateRepeatSeries(current.repeatSeriesId, input, categoryId, db);
-          }
-        } else await createRepeatSeries(input, categoryId, id, db, false);
-      } else if (current.repeatSeriesId != null) {
-        if (input.repeatEditScope === "occurrence") {
-          await db.execute(
-            "UPDATE notes SET repeat_series_id=NULL, repeat_occurrence_at=NULL WHERE id=$1", [id]
-          );
-        } else await stopRepeatSeries(current.repeatSeriesId, db, false);
-      }
-      await db.execute(
-        `UPDATE notes SET content = $1, title = $1, details = $2, category_id = $3,
-         priority = $4, due_at = $5, scheduled_at = $6,
-         reminder_triggered_at = CASE
-           WHEN reminder_enabled != $7 OR reminder_at IS NOT $8 THEN NULL ELSE reminder_triggered_at END,
-         reminder_enabled = $7, reminder_at = $8, reminder_offset_minutes = $9,
-         repeat_occurrence_at = CASE
-           WHEN repeat_series_id IS NULL THEN NULL
-           WHEN $10 = 'occurrence' THEN repeat_occurrence_at ELSE $6 END,
-         updated_at = $11 WHERE id = $12`,
-        [title, input.details?.trim() || null, categoryId, input.priority || "normal", input.dueAt || null,
-          input.scheduledAt || null, input.reminderEnabled ? 1 : 0, computedReminderAt,
-          input.reminderOffsetMinutes || 0, input.repeatEditScope || "series", new Date().toISOString(), id]
-      );
-      await db.execute("COMMIT");
-    } catch (error) {
-      try { await db.execute("ROLLBACK"); } catch { /* preserve original error */ }
-      throw error;
+    if (input.repeatEnabled) {
+      if (current.repeatSeriesId != null) {
+        if (input.repeatEditScope !== "occurrence") {
+          await updateRepeatSeries(current.repeatSeriesId, input, categoryId, db);
+        }
+      } else await createRepeatSeries(input, categoryId, id, db, false);
+    } else if (current.repeatSeriesId != null) {
+      if (input.repeatEditScope === "occurrence") {
+        await db.execute(
+          "UPDATE notes SET repeat_series_id=NULL, repeat_occurrence_at=NULL WHERE id=$1", [id]
+        );
+      } else await stopRepeatSeries(current.repeatSeriesId, db, false);
     }
+    await db.execute(
+      `UPDATE notes SET content = $1, title = $1, details = $2, category_id = $3,
+       priority = $4, due_at = $5, scheduled_at = $6,
+       reminder_triggered_at = CASE
+         WHEN reminder_enabled != $7 OR reminder_at IS NOT $8 THEN NULL ELSE reminder_triggered_at END,
+       reminder_enabled = $7, reminder_at = $8, reminder_offset_minutes = $9,
+       repeat_occurrence_at = CASE
+         WHEN repeat_series_id IS NULL THEN NULL
+         WHEN $10 = 'occurrence' THEN repeat_occurrence_at ELSE $6 END,
+       updated_at = $11 WHERE id = $12`,
+      [title, input.details?.trim() || null, categoryId, input.priority || "normal", input.dueAt || null,
+        input.scheduledAt || null, input.reminderEnabled ? 1 : 0, computedReminderAt,
+        input.reminderOffsetMinutes || 0, input.repeatEditScope || "series", new Date().toISOString(), id]
+    );
   } catch (error) {
     console.error("编辑事项失败:", error);
     throw error instanceof Error ? error : new Error("保存编辑失败");

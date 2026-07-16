@@ -142,6 +142,10 @@ flowchart LR
 | `npm test` | 运行 Vitest 测试 |
 | `npm run tauri build` | 构建 Windows NSIS 安装包 |
 
+## 版本记录
+
+每个版本的用户可见变更记录在 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 参与开发
 
 欢迎提交 Issue 或 Pull Request。开始修改前，请先确保以下检查通过：
