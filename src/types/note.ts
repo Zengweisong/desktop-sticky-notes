@@ -13,6 +13,13 @@ export interface Note {
   completedAt: string | null;
   dueAt: string | null;
   sortOrder: number;
+  scheduledAt: string | null;
+  repeatSeriesId: number | null;
+  repeatOccurrenceAt: string | null;
+  reminderEnabled: boolean;
+  reminderAt: string | null;
+  reminderOffsetMinutes: number;
+  reminderTriggeredAt: string | null;
 }
 
 export interface NoteRow {
@@ -29,6 +36,13 @@ export interface NoteRow {
   completed_at: string | null;
   due_at: string | null;
   sort_order: number;
+  scheduled_at: string | null;
+  repeat_series_id: number | null;
+  repeat_occurrence_at: string | null;
+  reminder_enabled: number;
+  reminder_at: string | null;
+  reminder_offset_minutes: number;
+  reminder_triggered_at: string | null;
 }
 
 export interface NoteInput {
@@ -37,6 +51,18 @@ export interface NoteInput {
   categoryId?: number | null;
   priority?: NotePriority;
   dueAt?: string | null;
+  scheduledAt?: string | null;
+  reminderEnabled?: boolean;
+  reminderOffsetMinutes?: number;
+  repeatEnabled?: boolean;
+  repeatType?: import("./repeat").RepeatType;
+  repeatInterval?: number;
+  repeatWeekdays?: number[];
+  repeatMonthDay?: number | null;
+  repeatEndType?: import("./repeat").RepeatEndType;
+  repeatEndDate?: string | null;
+  repeatMaxOccurrences?: number | null;
+  repeatEditScope?: "occurrence" | "series";
 }
 
 export interface NoteUpdate extends NoteInput {}

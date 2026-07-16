@@ -1,4 +1,5 @@
 import type { ExportNote } from "./note";
+import type { RepeatSeries } from "./repeat";
 
 export interface Category {
   id: number;
@@ -30,4 +31,12 @@ export interface ExportPayloadV2 {
   exportedAt: string;
   categories: Array<Omit<Category, "id"> & { id: number }>;
   notes: ExportNote[];
+}
+
+export interface ExportPayloadV3 {
+  version: 3;
+  exportedAt: string;
+  categories: Array<Omit<Category, "id"> & { id: number }>;
+  notes: ExportNote[];
+  repeatSeries: RepeatSeries[];
 }
