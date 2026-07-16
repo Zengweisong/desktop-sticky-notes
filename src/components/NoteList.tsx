@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Category } from "../types/category";
 import type { Note, NoteUpdate } from "../types/note";
+import type { RepeatSeries } from "../types/repeat";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { EmptyState } from "./EmptyState";
 import { NoteCard } from "./NoteCard";
@@ -8,17 +9,19 @@ import { NoteCard } from "./NoteCard";
 interface Props {
   notes: Note[];
   categories: Category[];
+  repeatSeries?: RepeatSeries[];
   loading: boolean;
   onToggleCompleted: (note: Note) => Promise<boolean>;
   onTogglePinned: (note: Note) => Promise<boolean>;
+  onToggleRepeatActive?: (series: RepeatSeries) => Promise<boolean>;
   onEdit: (id: number, input: NoteUpdate) => Promise<boolean>;
   onMove: (id: number, targetId: number, position: "before" | "after") => Promise<boolean>;
-  onDelete: (id: number) => Promise<boolean>;
+  onDelete: (id: number, scope?: "occurrence" | "series") => Promise<boolean>;
 }
 
 type DropTarget = { id: number; position: "before" | "after" };
 
-export function NoteList({ notes, categories, loading, onToggleCompleted, onTogglePinned, onEdit, onMove, onDelete }: Props) {
+export function NoteList({ notes, categories, repeatSeries = [], loading, onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onMove, onDelete }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<Note | null>(null);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
@@ -33,7 +36,10 @@ export function NoteList({ notes, categories, loading, onToggleCompleted, onTogg
     setDropTarget(null);
   };
   return <>
-    <div className="note-list">{notes.map((note, index) => <NoteCard key={note.id} note={note} categories={categories} isNew={index === 0}
+    <div className="note-list">{notes.map((note, index) => {
+      const series = repeatSeries.find((item) => item.id === note.repeatSeriesId);
+      return <NoteCard key={note.id} note={note}
+      repeatSeries={series} categories={categories} isNew={index === 0}
       dragging={draggedId === note.id} dropPosition={dropTarget?.id === note.id ? dropTarget.position : null}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -66,9 +72,19 @@ export function NoteList({ notes, categories, loading, onToggleCompleted, onTogg
       }}
       onPointerCancel={finishDrag}
       onToggleCompleted={() => onToggleCompleted(note)} onTogglePinned={() => onTogglePinned(note)}
-      onEdit={(input) => onEdit(note.id, input)} onRequestDelete={() => setDeleteTarget(note)} />)}</div>
-    <ConfirmDialog open={Boolean(deleteTarget)} title="删除这条事项？" message="删除后无法恢复。"
-      onCancel={() => setDeleteTarget(null)} onConfirm={() => { if (deleteTarget) void onDelete(deleteTarget.id); setDeleteTarget(null); }} />
+      onToggleRepeatActive={series && onToggleRepeatActive ? () => onToggleRepeatActive(series) : undefined}
+      onEdit={(input) => onEdit(note.id, input)} onRequestDelete={() => setDeleteTarget(note)} />;
+    })}</div>
+    {deleteTarget?.repeatSeriesId != null ? <div className="dialog-backdrop" onMouseDown={() => setDeleteTarget(null)}>
+      <div className="confirm-dialog repeat-delete-dialog" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <h3>删除重复事项</h3><p>只删除本次不会影响后续生成；删除整个系列会移除所有实例并停止生成。</p>
+        <div className="dialog-actions"><button onClick={() => setDeleteTarget(null)}>取消</button>
+          <button onClick={() => { void onDelete(deleteTarget.id, "occurrence"); setDeleteTarget(null); }}>仅删除本次</button>
+          <button className="danger" onClick={() => { void onDelete(deleteTarget.id, "series"); setDeleteTarget(null); }}>删除整个系列</button>
+        </div>
+      </div>
+    </div> : <ConfirmDialog open={Boolean(deleteTarget)} title="删除这条事项？" message="删除后无法恢复。"
+      onCancel={() => setDeleteTarget(null)} onConfirm={() => { if (deleteTarget) void onDelete(deleteTarget.id, "occurrence"); setDeleteTarget(null); }} />}
   </>;
 }
 

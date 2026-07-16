@@ -17,6 +17,7 @@ import { useNotes } from "./hooks/useNotes";
 import { useSettings } from "./hooks/useSettings";
 import { initializeDatabase } from "./services/database";
 import { saveSettings } from "./services/settingsService";
+import { startBackgroundTaskService } from "./services/backgroundTaskService";
 import { useSettingsStore } from "./stores/settingsStore";
 import { categoryIdFromFilter, type NoteFilter } from "./types/filter";
 import type { Note } from "./types/note";
@@ -76,6 +77,26 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    return startBackgroundTaskService(notes.refresh, errorToast);
+  }, [ready, notes.refresh, errorToast]);
+
+  useEffect(() => {
+    const focusNote = (event: Event) => {
+      const id = (event as CustomEvent<number>).detail;
+      setFilter("all");
+      void notes.refresh().then(() => window.setTimeout(() => {
+        const card = document.querySelector<HTMLElement>(`[data-note-id="${id}"]`);
+        card?.scrollIntoView({ behavior: "smooth", block: "center" });
+        card?.classList.add("notification-focus");
+        window.setTimeout(() => card?.classList.remove("notification-focus"), 2200);
+      }, 60));
+    };
+    window.addEventListener("focus-note", focusNote);
+    return () => window.removeEventListener("focus-note", focusNote);
+  }, [notes.refresh]);
 
   useEffect(() => {
     if (categories.categories.length && (quickCategoryId == null || !categories.categories.some((category) => category.id === quickCategoryId))) {
@@ -199,9 +220,11 @@ export default function App() {
         onManage={() => { setSettingsOpen(false); setCategoriesOpen(true); }} />
       <div className="list-area">
         {!ready ? <div className="loading-state"><span /><span /><span /></div> :
-          <NoteList notes={visibleNotes} categories={categories.categories} loading={notes.loading || categories.loading}
+          <NoteList notes={visibleNotes} categories={categories.categories} repeatSeries={notes.repeatSeries}
+            loading={notes.loading || categories.loading}
             onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
             onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)} onEdit={notes.edit}
+            onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
             onMove={notes.move} onDelete={notes.remove} />}
       </div>
       <footer><span>{visibleNotes.length} 项 · {notes.notes.filter((note) => !note.completed).length} 项待办</span>
@@ -221,7 +244,9 @@ function filterNotes(notes: Note[], filter: NoteFilter, showCompleted: boolean) 
   if (filter === "completed") return notes.filter((note) => note.completed);
   if (filter === "active") return notes.filter((note) => !note.completed);
   const today = localDateKey(new Date());
-  if (filter === "today") return notes.filter((note) => note.dueAt?.slice(0, 10) === today && (showCompleted || !note.completed));
+  if (filter === "today") return notes.filter((note) =>
+    (note.scheduledAt ? localDateKey(new Date(note.scheduledAt)) : note.dueAt?.slice(0, 10)) === today &&
+    (showCompleted || !note.completed));
   const categoryId = categoryIdFromFilter(filter);
   if (categoryId != null) return notes.filter((note) => note.categoryId === categoryId && (showCompleted || !note.completed));
   return showCompleted ? notes : notes.filter((note) => !note.completed);

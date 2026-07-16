@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Plus } from "lucide-react";
+import { Check, ChevronDown, Plus, SlidersHorizontal } from "lucide-react";
 import type { Category } from "../types/category";
 import type { NoteInput } from "../types/note";
+import { TaskScheduleFields } from "./TaskScheduleFields";
 
 interface Props {
   categories: Category[];
@@ -14,6 +15,8 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [schedule, setSchedule] = useState<NoteInput>({ title: "", reminderEnabled: false, repeatEnabled: false });
   const composing = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const categoryMenuRef = useRef<HTMLDivElement>(null);
@@ -44,12 +47,16 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
   const submit = async () => {
     if (!value.trim() || submitting || composing.current) return;
     setSubmitting(true);
-    const ok = await onAdd({ title: value, categoryId });
-    if (ok) { setValue(""); inputRef.current?.focus(); }
+    const ok = await onAdd({ ...schedule, title: value, categoryId });
+    if (ok) {
+      setValue(""); setAdvancedOpen(false);
+      setSchedule({ title: "", reminderEnabled: false, repeatEnabled: false });
+      inputRef.current?.focus();
+    }
     setSubmitting(false);
   };
 
-  return <div className="quick-input-wrap">
+  return <div className={`quick-input-wrap ${advancedOpen ? "advanced" : ""}`}>
     <textarea
       ref={inputRef} value={value} rows={1} disabled={submitting}
       placeholder="输入事项，按 Enter 添加"
@@ -77,8 +84,15 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
         </button>)}
       </div>}
     </div>
+    <button className={`advanced-trigger ${advancedOpen ? "selected" : ""}`} type="button"
+      onClick={() => setAdvancedOpen((open) => !open)} aria-label="提醒与重复设置" title="提醒与重复设置">
+      <SlidersHorizontal size={15} />
+    </button>
     <button className="add-button" disabled={!value.trim() || submitting} onClick={() => void submit()} aria-label="添加事项">
       <Plus size={18} />
     </button>
+    {advancedOpen && <div className="quick-advanced-panel">
+      <TaskScheduleFields value={schedule} onChange={(patch) => setSchedule((current) => ({ ...current, ...patch }))} compact />
+    </div>}
   </div>;
 }

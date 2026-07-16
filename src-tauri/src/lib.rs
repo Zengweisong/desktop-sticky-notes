@@ -346,6 +346,48 @@ fn set_background_visible(app: tauri::AppHandle, visible: bool) {
     let _ = (app, visible);
 }
 
+#[cfg(windows)]
+#[tauri::command]
+fn show_reminder_notification(
+    app: tauri::AppHandle,
+    note_id: i64,
+    title: String,
+    details: String,
+    context: String,
+) -> Result<(), String> {
+    use tauri_winrt_notification::Toast;
+
+    let app_id = if tauri::is_dev() {
+        Toast::POWERSHELL_APP_ID.to_string()
+    } else {
+        app.config().identifier.clone()
+    };
+    let activation_app = app.clone();
+    Toast::new(&app_id)
+        .title(&title)
+        .text1(&details)
+        .text2(&context)
+        .on_activated(move |_| {
+            show_window(&activation_app);
+            let _ = activation_app.emit("notification-activated", note_id);
+            Ok(())
+        })
+        .show()
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn show_reminder_notification(
+    _app: tauri::AppHandle,
+    _note_id: i64,
+    _title: String,
+    _details: String,
+    _context: String,
+) -> Result<(), String> {
+    Err("原生 Windows 通知仅在 Windows 上可用".into())
+}
+
 // Migration 1 已发布，必须保持逐字节不变；concat! 可防止 rustfmt 改变其 checksum。
 const MIGRATION_1_SQL: &str = concat!(
     "\n",
@@ -412,6 +454,58 @@ fn migrations() -> Vec<Migration> {
                   WHERE category_id IS NULL;
                 CREATE INDEX IF NOT EXISTS idx_notes_category ON notes(category_id);
                 CREATE INDEX IF NOT EXISTS idx_notes_due_at ON notes(due_at);
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "add independent reminders and repeat series",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS repeat_series (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    details TEXT NULL,
+                    category_id INTEGER NULL REFERENCES categories(id) ON DELETE SET NULL,
+                    priority TEXT NOT NULL DEFAULT 'normal'
+                      CHECK (priority IN ('low', 'normal', 'high')),
+                    repeat_type TEXT NOT NULL
+                      CHECK (repeat_type IN ('daily', 'weekdays', 'weekly', 'monthly', 'yearly')),
+                    repeat_interval INTEGER NOT NULL DEFAULT 1 CHECK (repeat_interval > 0),
+                    repeat_weekdays TEXT NULL,
+                    repeat_month_day INTEGER NULL CHECK (repeat_month_day BETWEEN 1 AND 31),
+                    start_at TEXT NOT NULL,
+                    end_type TEXT NOT NULL DEFAULT 'never'
+                      CHECK (end_type IN ('never', 'date', 'count')),
+                    end_date TEXT NULL,
+                    max_occurrences INTEGER NULL CHECK (max_occurrences IS NULL OR max_occurrences > 0),
+                    generated_occurrences INTEGER NOT NULL DEFAULT 0,
+                    default_reminder_enabled INTEGER NOT NULL DEFAULT 0
+                      CHECK (default_reminder_enabled IN (0, 1)),
+                    default_reminder_offset_minutes INTEGER NOT NULL DEFAULT 0 CHECK (default_reminder_offset_minutes >= 0),
+                    next_occurrence_at TEXT NULL,
+                    active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                ALTER TABLE notes ADD COLUMN scheduled_at TEXT NULL;
+                ALTER TABLE notes ADD COLUMN repeat_series_id INTEGER NULL
+                  REFERENCES repeat_series(id) ON DELETE SET NULL;
+                ALTER TABLE notes ADD COLUMN repeat_occurrence_at TEXT NULL;
+                ALTER TABLE notes ADD COLUMN reminder_enabled INTEGER NOT NULL DEFAULT 0
+                  CHECK (reminder_enabled IN (0, 1));
+                ALTER TABLE notes ADD COLUMN reminder_at TEXT NULL;
+                ALTER TABLE notes ADD COLUMN reminder_offset_minutes INTEGER NOT NULL DEFAULT 0
+                  CHECK (reminder_offset_minutes >= 0);
+                ALTER TABLE notes ADD COLUMN reminder_triggered_at TEXT NULL;
+
+                CREATE INDEX IF NOT EXISTS idx_notes_reminder_pending
+                  ON notes(reminder_enabled, reminder_at, reminder_triggered_at, completed);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_repeat_occurrence
+                  ON notes(repeat_series_id, repeat_occurrence_at)
+                  WHERE repeat_series_id IS NOT NULL AND repeat_occurrence_at IS NOT NULL;
+                CREATE INDEX IF NOT EXISTS idx_repeat_series_next
+                  ON repeat_series(active, next_occurrence_at);
             "#,
             kind: MigrationKind::Up,
         },
@@ -518,9 +612,11 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             set_background_appearance,
-            set_background_visible
+            set_background_visible,
+            show_reminder_notification
         ])
         .setup(|app| {
             #[cfg(windows)]
