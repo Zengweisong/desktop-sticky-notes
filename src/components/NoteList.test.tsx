@@ -43,11 +43,40 @@ describe("NoteList drag sorting", () => {
 
     await act(async () => {
       handles[0].dispatchEvent(pointerEvent("pointerdown", 0));
-      handles[0].dispatchEvent(pointerEvent("pointermove", 1));
-      handles[0].dispatchEvent(pointerEvent("pointerup", 1));
+      handles[0].dispatchEvent(pointerEvent("pointermove", 20));
+      handles[0].dispatchEvent(pointerEvent("pointerup", 20));
     });
 
     expect(onMove).toHaveBeenCalledWith(1, 2, "after");
+    await act(async () => root.unmount());
+  });
+
+  it("does not start sorting for small pointer jitter", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onMove = vi.fn().mockResolvedValue(true);
+
+    await act(async () => {
+      root.render(<NoteList notes={notes} categories={[]} loading={false}
+        onToggleCompleted={vi.fn()} onTogglePinned={vi.fn()} onEdit={vi.fn()}
+        onMove={onMove} onDelete={vi.fn()} />);
+    });
+
+    const handle = container.querySelector<HTMLButtonElement>(".drag-handle")!;
+    Object.defineProperties(handle, {
+      setPointerCapture: { configurable: true, value: vi.fn() },
+      hasPointerCapture: { configurable: true, value: () => true },
+      releasePointerCapture: { configurable: true, value: vi.fn() }
+    });
+
+    await act(async () => {
+      handle.dispatchEvent(pointerEvent("pointerdown", 20));
+      handle.dispatchEvent(pointerEvent("pointermove", 25));
+      handle.dispatchEvent(pointerEvent("pointerup", 25));
+    });
+
+    expect(onMove).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
 });

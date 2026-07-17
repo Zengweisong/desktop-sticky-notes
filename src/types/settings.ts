@@ -24,7 +24,7 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  opacity: 0,
+  opacity: 92,
   theme: "warm",
   alwaysOnTop: true,
   launchOnStartup: false,

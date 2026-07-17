@@ -12,6 +12,7 @@ interface Props {
   categories: Category[];
   isNew?: boolean;
   dragging?: boolean;
+  dragOffsetY?: number;
   dropPosition?: "before" | "after" | null;
   onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onPointerMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
@@ -24,7 +25,7 @@ interface Props {
   onRequestDelete: () => void;
 }
 
-export function NoteCard({ note, repeatSeries, categories, isNew, dragging, dropPosition, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
+export function NoteCard({ note, repeatSeries, categories, isNew, dragging, dragOffsetY = 0, dropPosition, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
   onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onRequestDelete }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -82,7 +83,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drop
   const category = categories.find((item) => item.id === note.categoryId);
 
   return <article className={`note-card ${note.completed ? "completed" : ""} ${isNew ? "note-enter" : ""} ${dragging ? "dragging" : ""} ${dropPosition ? `drop-${dropPosition}` : ""}`}
-    data-note-id={note.id}>
+    data-note-id={note.id} style={{ "--drag-offset-y": `${dragOffsetY}px` } as React.CSSProperties}>
     <button className="drag-handle" disabled={editing || busy} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} aria-label="拖动调整顺序" title="拖动调整顺序"><GripVertical size={14} /></button>
     <button className={`check-button ${note.completed ? "checked" : ""}`} disabled={busy}

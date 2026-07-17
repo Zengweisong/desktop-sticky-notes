@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, Keyboard, Moon, Sun, Trash2, Type, Upload, X } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -30,6 +30,19 @@ export function SettingsDrawer(props: Props) {
   const [fileBusy, setFileBusy] = useState(false);
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const [shortcutBusy, setShortcutBusy] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!props.open) return;
+    closeButtonRef.current?.focus();
+  }, [props.open]);
+
+  useEffect(() => {
+    if (!props.open) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") props.onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [props.open, props.onClose]);
 
   const exportData = async () => {
     if (fileBusy) return; setFileBusy(true);
@@ -55,8 +68,9 @@ export function SettingsDrawer(props: Props) {
 
   return <>
     <div className={`drawer-backdrop ${props.open ? "visible" : ""}`} onClick={props.onClose} />
-    <aside className={`settings-drawer ${props.open ? "open" : ""}`} aria-hidden={!props.open}>
-      <div className="drawer-header"><div><h2>设置</h2><p>让便签更适合你的桌面</p></div><button onClick={props.onClose}><X size={18} /></button></div>
+    <aside className={`settings-drawer ${props.open ? "open" : ""}`} aria-hidden={!props.open}
+      role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div className="drawer-header"><div><h2 id="settings-title">设置</h2><p>让便签更适合你的桌面</p></div><button ref={closeButtonRef} type="button" aria-label="关闭设置" onClick={props.onClose}><X size={18} /></button></div>
       <div className="drawer-content">
         <OpacitySlider value={props.settings.opacity} onChange={(opacity) => void props.onUpdate({ opacity })} />
         <div className="setting-block">

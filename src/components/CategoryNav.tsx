@@ -24,7 +24,8 @@ export function CategoryNav({ categories, notes, active, onChange, onManage }: P
   ];
   return <nav className="category-nav" aria-label="事项筛选">
     <div className="filter-row">
-      {filters.map(({ id, label, count, icon: Icon }) => <button key={id} className={active === id ? "selected" : ""} onClick={() => onChange(id)}>
+      {filters.map(({ id, label, count, icon: Icon }) => <button key={id} type="button" aria-pressed={active === id}
+        className={active === id ? "selected" : ""} onClick={() => onChange(id)}>
         <Icon size={13} /><span>{label}</span><b>{count}</b>
       </button>)}
     </div>
@@ -33,13 +34,14 @@ export function CategoryNav({ categories, notes, active, onChange, onManage }: P
         {categories.map((category) => {
           const filter = `category:${category.id}` as NoteFilter;
           const count = notes.filter((note) => !note.completed && note.categoryId === category.id).length;
-          return <button key={category.id} title={category.name} className={active === filter ? "selected" : ""} onClick={() => onChange(filter)}>
+          return <button key={category.id} type="button" title={category.name} aria-pressed={active === filter}
+            className={active === filter ? "selected" : ""} onClick={() => onChange(filter)}>
             <i style={{ backgroundColor: category.color }} /><span>{category.name}</span><b>{count}</b>
           </button>;
         })}
       </div>
-      <button className="manage-categories" onClick={onManage} title="管理类别"><SlidersHorizontal size={14} /></button>
-      <button className="add-category-shortcut" onClick={onManage} title="新增类别"><Plus size={15} /></button>
+      <button type="button" className="manage-categories" onClick={onManage} aria-label="管理类别" title="管理类别"><SlidersHorizontal size={14} /></button>
+      <button type="button" className="add-category-shortcut" onClick={onManage} aria-label="新增类别" title="新增类别"><Plus size={15} /></button>
     </div>
   </nav>;
 }

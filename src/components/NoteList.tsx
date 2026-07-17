@@ -24,16 +24,21 @@ type DropTarget = { id: number; position: "before" | "after" };
 export function NoteList({ notes, categories, repeatSeries = [], loading, onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onMove, onDelete }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<Note | null>(null);
   const [draggedId, setDraggedId] = useState<number | null>(null);
+  const [dragOffsetY, setDragOffsetY] = useState(0);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const draggedIdRef = useRef<number | null>(null);
   const dropTargetRef = useRef<DropTarget | null>(null);
+  const dragStartYRef = useRef(0);
+  const dragActivatedRef = useRef(false);
   if (loading) return <div className="loading-state"><span /><span /><span /></div>;
   if (!notes.length) return <EmptyState />;
   const finishDrag = () => {
     draggedIdRef.current = null;
     dropTargetRef.current = null;
     setDraggedId(null);
+    setDragOffsetY(0);
     setDropTarget(null);
+    dragActivatedRef.current = false;
   };
   return <>
     <div className="note-list">{notes.map((note, index) => {
@@ -41,20 +46,36 @@ export function NoteList({ notes, categories, repeatSeries = [], loading, onTogg
       return <NoteCard key={note.id} note={note}
       repeatSeries={series} categories={categories} isNew={index === 0}
       dragging={draggedId === note.id} dropPosition={dropTarget?.id === note.id ? dropTarget.position : null}
+      dragOffsetY={draggedId === note.id ? dragOffsetY : 0}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
         draggedIdRef.current = note.id;
-        setDraggedId(note.id);
+        dragStartYRef.current = event.clientY;
+        dragActivatedRef.current = false;
+        setDragOffsetY(0);
       }}
       onPointerMove={(event) => {
         if (draggedIdRef.current == null) return;
         event.preventDefault();
-        const card = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>(".note-card");
+        const offsetY = event.clientY - dragStartYRef.current;
+        if (!dragActivatedRef.current && Math.abs(offsetY) < 8) return;
+        if (!dragActivatedRef.current) {
+          dragActivatedRef.current = true;
+          setDraggedId(draggedIdRef.current);
+        }
+        setDragOffsetY(offsetY);
+        const sourceId = draggedIdRef.current;
+        const hitElements = typeof document.elementsFromPoint === "function"
+          ? document.elementsFromPoint(event.clientX, event.clientY)
+          : [document.elementFromPoint(event.clientX, event.clientY)].filter(Boolean) as Element[];
+        const card = hitElements
+          .map((element) => element.closest<HTMLElement>(".note-card"))
+          .find((candidate) => candidate && Number(candidate.dataset.noteId) !== sourceId);
         const targetId = Number(card?.dataset.noteId);
         const target = notes.find((item) => item.id === targetId);
-        const source = notes.find((item) => item.id === draggedIdRef.current);
+        const source = notes.find((item) => item.id === sourceId);
         if (!card || !source || !target || source.id === target.id || noteGroup(source) !== noteGroup(target)) return;
         const rect = card.getBoundingClientRect();
         const next = { id: target.id, position: event.clientY < rect.top + rect.height / 2 ? "before" as const : "after" as const };
@@ -65,7 +86,7 @@ export function NoteList({ notes, categories, repeatSeries = [], loading, onTogg
         if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
         const sourceId = draggedIdRef.current;
         const target = dropTargetRef.current;
-        if (sourceId != null && target) {
+        if (dragActivatedRef.current && sourceId != null && target) {
           void onMove(sourceId, target.id, target.position);
         }
         finishDrag();

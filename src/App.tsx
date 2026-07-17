@@ -243,7 +243,7 @@ export default function App() {
   };
   const visibleNotes = filterNotes(notes.notes, filter, prefs.settings.showCompleted);
 
-  return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize}`}
+  return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize} ${(settingsOpen || categoriesOpen) ? "overlay-open" : ""}`}
     style={{ "--panel-opacity": String(prefs.settings.opacity / 100) } as React.CSSProperties}>
     <section className="panel">
       <CustomTitleBar alwaysOnTop={prefs.settings.alwaysOnTop} onToggleTop={toggleAlwaysOnTop}

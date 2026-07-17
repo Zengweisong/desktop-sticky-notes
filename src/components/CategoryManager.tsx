@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { Category, CategoryDeleteStrategy } from "../types/category";
 
@@ -22,6 +22,19 @@ export function CategoryManager(props: Props) {
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null);
   const [deleteCount, setDeleteCount] = useState(0);
   const [strategy, setStrategy] = useState<CategoryDeleteStrategy>({ type: "uncategorized" });
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!props.open || deleteTarget) return;
+    closeButtonRef.current?.focus();
+  }, [props.open, deleteTarget]);
+
+  useEffect(() => {
+    if (!props.open || deleteTarget) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") props.onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [props.open, props.onClose, deleteTarget]);
 
   useEffect(() => {
     if (!deleteTarget) return;
@@ -39,8 +52,9 @@ export function CategoryManager(props: Props) {
 
   return <>
     <div className={`drawer-backdrop ${props.open ? "visible" : ""}`} onClick={props.onClose} />
-    <aside className={`category-manager ${props.open ? "open" : ""}`} aria-hidden={!props.open}>
-      <div className="drawer-header"><div><h2>类别管理</h2><p>整理你的待办事项</p></div><button onClick={props.onClose}><X size={18} /></button></div>
+    <aside className={`category-manager ${props.open ? "open" : ""}`} aria-hidden={!props.open}
+      role="dialog" aria-modal="true" aria-labelledby="categories-title">
+      <div className="drawer-header"><div><h2 id="categories-title">类别管理</h2><p>整理你的待办事项</p></div><button ref={closeButtonRef} type="button" aria-label="关闭类别管理" onClick={props.onClose}><X size={18} /></button></div>
       <div className="category-manager-content">
         <div className="category-form">
           <input value={name} maxLength={30} placeholder={editing ? "修改类别名称" : "新类别名称"}
