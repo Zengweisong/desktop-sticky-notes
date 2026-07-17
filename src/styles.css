@@ -879,13 +879,18 @@ textarea::placeholder, input::placeholder {
   height: 16px;
 }
 .note-edit-form .schedule-block {
-  padding: 8px 0;
-  border-color: color-mix(in srgb, var(--separator) 72%, transparent);
+  padding: 6px 0;
+  border-color: color-mix(in srgb, var(--separator) 45%, transparent);
 }
+.note-edit-form .schedule-block:first-of-type { padding-top: 0; border-top: 0; }
 .note-edit-form .schedule-title + .schedule-block { padding-top: 0; }
 .note-edit-form .schedule-label {
-  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 5px;
   font-size: 14px;
+  font-weight: 600;
+  line-height: var(--line-height-ui);
 }
 .note-edit-form .schedule-label small {
   margin-left: 5px;

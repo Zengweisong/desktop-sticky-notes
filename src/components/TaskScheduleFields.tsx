@@ -115,7 +115,7 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
       {hint && <p className="schedule-message error primary-message" role="status">{hint}</p>}
     </section>}
 
-    <div className="schedule-title"><Clock3 size={14} /><span>时间安排</span></div>
+    {showPrimaryRow && <div className="schedule-title"><Clock3 size={14} /><span>时间安排</span></div>}
 
     <section className="schedule-block" aria-labelledby="plan-time-label">
       <div className="schedule-label" id="plan-time-label">事项时间 <small>可选</small></div>
