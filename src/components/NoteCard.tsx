@@ -37,6 +37,8 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
   const [schedule, setSchedule] = useState<NoteUpdate>(() => scheduleFrom(note, repeatSeries));
   const [overflows, setOverflows] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reminderClock, setReminderClock] = useState(0);
+  const reminderVisible = isUpcomingReminder(note);
   const editorRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLParagraphElement>(null);
@@ -58,6 +60,16 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
   }, [editing, title, details, categoryId, priority, dueAt, schedule]);
+  useEffect(() => {
+    if (!reminderVisible) return;
+    const reminderTime = new Date(note.reminderAt!).getTime();
+    const delay = Math.min(Math.max(reminderTime - Date.now() + 50, 50), 2_147_483_647);
+    const timer = window.setTimeout(() => setReminderClock((value) => value + 1), delay);
+    return () => window.clearTimeout(timer);
+  }, [note.reminderAt, reminderVisible, reminderClock]);
+  useEffect(() => {
+    if (!reminderVisible && !repeatSeries && !overflows) setExpanded(false);
+  }, [reminderVisible, repeatSeries, overflows]);
 
   const resetDraft = () => {
     setTitle(note.title); setDetails(note.details || ""); setCategoryId(note.categoryId);
@@ -117,17 +129,17 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
       </div> : <>
         <p ref={contentRef} className={expanded ? "expanded" : "clamped"}>{note.title}</p>
         {note.details && <p ref={detailsRef} className={`note-details ${expanded ? "" : "details-clamped"}`}>{note.details}</p>}
-        {(overflows || expanded || note.scheduledAt || repeatSeries) && <button className="expand-button" onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "查看详情"}</button>}
+        {(overflows || expanded || reminderVisible || repeatSeries) && <button className="expand-button" onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "查看详情"}</button>}
         <div className="note-meta">
           {category && <span className="category-badge" title={category.name}><i style={{ backgroundColor: category.color }} />{category.name}</span>}
           {note.priority !== "normal" && <span className={`priority-badge ${note.priority}`}>{note.priority === "high" ? "高优先级" : "低优先级"}</span>}
           {note.dueAt && <span className={`due-badge ${isOverdue(note) ? "overdue" : ""}`}><Calendar size={11} />{formatDueDate(note.dueAt)}</span>}
           {repeatSeries && <span className="repeat-badge"><Repeat2 size={11} />{describeRepeat(repeatSeries)}</span>}
-          {note.reminderEnabled && note.reminderAt && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
+          {reminderVisible && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
         </div>
-        {expanded && <div className="note-schedule-details">
+        {expanded && (reminderVisible || repeatSeries) && <div className="note-schedule-details">
           <div><b>事项时间</b><span>{note.scheduledAt ? formatFullDateTime(note.scheduledAt) : "未设置"}</span></div>
-          <div><b>提醒设置</b><span>{note.reminderEnabled ? formatReminder(note, Boolean(repeatSeries)) : "关闭"}</span></div>
+          {reminderVisible && <div><b>提醒设置</b><span>{formatReminder(note, Boolean(repeatSeries))}</span></div>}
           <div><b>重复规则</b><span>{repeatSeries ? `${describeRepeat(repeatSeries)} · ${repeatSeries.active ? "进行中" : "已暂停"}` : "不重复"}</span></div>
           {repeatSeries && onToggleRepeatActive && <button className="repeat-pause-button" disabled={busy}
             onClick={() => void toggle(onToggleRepeatActive)}>{repeatSeries.active ? "暂停后续生成" : "恢复后续生成"}</button>}
@@ -152,6 +164,12 @@ function isOverdue(note: Note) {
   if (note.completed || !note.dueAt) return false;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return new Date(`${note.dueAt.slice(0, 10)}T00:00:00`) < today;
+}
+
+export function isUpcomingReminder(note: Note, now = Date.now()) {
+  if (!note.reminderEnabled || !note.reminderAt || note.reminderTriggeredAt) return false;
+  const reminderTime = new Date(note.reminderAt).getTime();
+  return Number.isFinite(reminderTime) && reminderTime > now;
 }
 
 function scheduleFrom(note: Note, series?: RepeatSeries): NoteUpdate {

@@ -79,6 +79,63 @@ describe("NoteList drag sorting", () => {
     expect(onMove).not.toHaveBeenCalled();
     await act(async () => root.unmount());
   });
+
+  it("hides an expired reminder without leaving a details row behind", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-17T12:00:00.000Z"));
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const expired = {
+      ...makeNote(3, "已过提醒事项"),
+      scheduledAt: "2026-07-17T12:10:00.000Z",
+      reminderEnabled: true,
+      reminderAt: "2026-07-17T11:50:00.000Z"
+    };
+
+    await act(async () => {
+      root.render(<NoteList notes={[expired]} categories={[]} loading={false}
+        onToggleCompleted={vi.fn()} onTogglePinned={vi.fn()} onEdit={vi.fn()}
+        onMove={vi.fn()} onDelete={vi.fn()} />);
+    });
+
+    expect(container.querySelector(".reminder-badge")).toBeNull();
+    expect(container.querySelector(".expand-button")).toBeNull();
+    await act(async () => root.unmount());
+    vi.useRealTimers();
+  });
+
+  it("automatically removes a reminder when its time passes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-17T12:00:00.000Z"));
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const upcoming = {
+      ...makeNote(4, "即将提醒事项"),
+      scheduledAt: "2026-07-17T12:10:00.000Z",
+      reminderEnabled: true,
+      reminderAt: "2026-07-17T12:01:00.000Z"
+    };
+
+    await act(async () => {
+      root.render(<NoteList notes={[upcoming]} categories={[]} loading={false}
+        onToggleCompleted={vi.fn()} onTogglePinned={vi.fn()} onEdit={vi.fn()}
+        onMove={vi.fn()} onDelete={vi.fn()} />);
+    });
+    expect(container.querySelector(".reminder-badge")).not.toBeNull();
+    await act(async () => {
+      container!.querySelector<HTMLButtonElement>(".expand-button")!.click();
+    });
+    expect(container.querySelector(".note-schedule-details")).not.toBeNull();
+
+    await act(async () => { vi.advanceTimersByTime(60_100); });
+
+    expect(container.querySelector(".reminder-badge")).toBeNull();
+    expect(container.querySelector(".expand-button")).toBeNull();
+    await act(async () => root.unmount());
+    vi.useRealTimers();
+  });
 });
 
 function pointerEvent(type: string, clientY: number) {
