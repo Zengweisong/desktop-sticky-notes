@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Download, Keyboard, Moon, Sun, Trash2, Upload, X } from "lucide-react";
+import { Download, Keyboard, Moon, Sun, Trash2, Type, Upload, X } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import type { AppSettings, ThemeName } from "../types/settings";
+import type { AppSettings, FontSizePreference, ThemeName } from "../types/settings";
 import { exportNotes, importNotes } from "../services/noteService";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { OpacitySlider } from "./OpacitySlider";
@@ -18,6 +18,11 @@ const themes: Array<{ value: ThemeName; label: string; icon: typeof Sun }> = [
   { value: "warm", label: "暖黄色便签", icon: Sun },
   { value: "light", label: "浅色玻璃", icon: Sun },
   { value: "dark", label: "深色玻璃", icon: Moon }
+];
+const fontSizes: Array<{ value: FontSizePreference; label: string }> = [
+  { value: "small", label: "小" },
+  { value: "medium", label: "中" },
+  { value: "large", label: "大" }
 ];
 
 export function SettingsDrawer(props: Props) {
@@ -54,6 +59,15 @@ export function SettingsDrawer(props: Props) {
       <div className="drawer-header"><div><h2>设置</h2><p>让便签更适合你的桌面</p></div><button onClick={props.onClose}><X size={18} /></button></div>
       <div className="drawer-content">
         <OpacitySlider value={props.settings.opacity} onChange={(opacity) => void props.onUpdate({ opacity })} />
+        <div className="setting-block">
+          <div className="setting-heading"><span className="setting-heading-label"><Type size={16} />字体大小</span></div>
+          <div className="font-size-options" role="radiogroup" aria-label="字体大小">
+            {fontSizes.map(({ value, label }) => <button key={value} type="button" role="radio"
+              aria-checked={props.settings.fontSize === value}
+              className={props.settings.fontSize === value ? "selected" : ""}
+              onClick={() => void props.onUpdate({ fontSize: value })}>{label}</button>)}
+          </div>
+        </div>
         <div className="setting-block"><div className="setting-heading"><span>主题</span></div>
           <div className="theme-options">{themes.map(({ value, label, icon: Icon }) => <button key={value}
             className={`theme-option theme-${value} ${props.settings.theme === value ? "selected" : ""}`}

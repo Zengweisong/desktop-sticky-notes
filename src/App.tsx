@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getCurrentWindow, availableMonitors, PhysicalPosition, PhysicalSize } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -17,6 +17,11 @@ import { useNotes } from "./hooks/useNotes";
 import { useSettings } from "./hooks/useSettings";
 import { initializeDatabase } from "./services/database";
 import { saveSettings } from "./services/settingsService";
+import {
+  createWindowStateManager,
+  restoreWindowState,
+  type WindowStateManager
+} from "./services/windowStateManager";
 import { startBackgroundTaskService } from "./services/backgroundTaskService";
 import { useSettingsStore } from "./stores/settingsStore";
 import { categoryIdFromFilter, type NoteFilter } from "./types/filter";
@@ -31,6 +36,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const toastId = useRef(0);
   const activeShortcut = useRef<string | null>(null);
+  const windowStateManager = useRef<WindowStateManager | null>(null);
   const toast = useCallback((message: string, type: "success" | "error" = "success") => {
     const id = ++toastId.current;
     setToasts((items) => [...items, { id, message, type }]);
@@ -56,6 +62,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    let showOnStartup = true;
     void (async () => {
       try {
         // Clear both the host window and WebView2 backing surface.
@@ -64,16 +71,31 @@ export default function App() {
         await prefs.load();
         if (cancelled) return;
         const current = useSettingsStore.getState().settings;
-        await restoreWindow(win, current.window);
+        showOnStartup = current.showOnStartup;
+        await invoke("set_background_appearance", {
+          opacity: current.opacity,
+          theme: current.theme,
+          alwaysOnTop: current.alwaysOnTop
+        });
+        const restoredWindow = await restoreWindowState(win, current.window);
+        const restoredSettings = { ...current, window: restoredWindow };
+        useSettingsStore.getState().patchSettings({ window: restoredWindow });
+        await saveSettings(restoredSettings);
         await Promise.all([categories.refresh(), notes.refresh()]);
-        if (!current.showOnStartup) {
-          await win.hide();
-          await invoke("set_background_visible", { visible: false });
-        }
       } catch (error) {
         console.error("应用初始化失败:", error);
         errorToast(error instanceof Error ? error.message : "应用初始化失败");
-      } finally { if (!cancelled) setReady(true); }
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+          window.requestAnimationFrame(() => {
+            if (!showOnStartup) return;
+            void win.show()
+              .then(() => invoke("set_background_visible", { visible: true }))
+              .catch((error) => console.error("显示已恢复的窗口失败:", error));
+          });
+        }
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -141,28 +163,40 @@ export default function App() {
   }, [ready, prefs.settings.opacity, prefs.settings.theme, prefs.settings.alwaysOnTop]);
 
   useEffect(() => {
-    const cleanups: Array<() => void> = [];
-    let timer: number | undefined;
-    const persistBounds = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(async () => {
-        try {
-          const [position, size] = await Promise.all([win.outerPosition(), win.outerSize()]);
-          const current = useSettingsStore.getState().settings;
-          const next = { ...current, window: { x: position.x, y: position.y, width: size.width, height: size.height } };
-          useSettingsStore.getState().setSettings(next);
-          await saveSettings(next);
-        } catch (error) { console.error("保存窗口位置和尺寸失败:", error); }
-      }, 350);
+    if (!ready) return;
+    const manager = createWindowStateManager(
+      win,
+      useSettingsStore.getState().settings.window,
+      async (windowState) => {
+        const current = useSettingsStore.getState().settings;
+        const next = { ...current, window: windowState };
+        useSettingsStore.getState().patchSettings({ window: windowState });
+        await saveSettings(next);
+      }
+    );
+    windowStateManager.current = manager;
+    void manager.start().catch((error) => console.error("监听窗口状态失败:", error));
+    return () => {
+      manager.dispose();
+      if (windowStateManager.current === manager) windowStateManager.current = null;
     };
-    void win.onMoved(persistBounds).then((fn) => cleanups.push(fn));
-    void win.onResized(persistBounds).then((fn) => cleanups.push(fn));
+  }, [ready, win]);
+
+  useEffect(() => {
+    const cleanups: Array<() => void> = [];
+    let disposed = false;
     void listen<string>("tray-action", (event) => {
       if (event.payload === "show" || event.payload === "quick-add") void focusQuickInput();
       if (event.payload === "settings") { void focusQuickInput(); setCategoriesOpen(false); setSettingsOpen(true); }
       if (event.payload === "toggle-top") void toggleAlwaysOnTop();
-    }).then((fn) => cleanups.push(fn));
-    return () => { window.clearTimeout(timer); cleanups.forEach((fn) => fn()); };
+      if (event.payload === "quit") {
+        void (async () => {
+          await windowStateManager.current?.flush();
+          await invoke("quit_app");
+        })().catch((error) => console.error("退出应用失败:", error));
+      }
+    }).then((fn) => { if (disposed) fn(); else cleanups.push(fn); });
+    return () => { disposed = true; cleanups.forEach((fn) => fn()); };
   }, [focusQuickInput, win]);
 
   const updateSettings = useCallback(async (patch: Parameters<typeof prefs.update>[0]) => {
@@ -209,7 +243,7 @@ export default function App() {
   };
   const visibleNotes = filterNotes(notes.notes, filter, prefs.settings.showCompleted);
 
-  return <main className={`app-shell theme-${prefs.settings.theme}`}
+  return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize}`}
     style={{ "--panel-opacity": String(prefs.settings.opacity / 100) } as React.CSSProperties}>
     <section className="panel">
       <CustomTitleBar alwaysOnTop={prefs.settings.alwaysOnTop} onToggleTop={toggleAlwaysOnTop}
@@ -254,20 +288,4 @@ function filterNotes(notes: Note[], filter: NoteFilter, showCompleted: boolean) 
 
 function localDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-async function restoreWindow(win: ReturnType<typeof getCurrentWindow>, state: { x: number | null; y: number | null; width: number; height: number }) {
-  try {
-    const width = Math.max(300, state.width); const height = Math.max(320, state.height);
-    await win.setSize(new PhysicalSize(width, height));
-    const monitors = await availableMonitors();
-    const valid = state.x !== null && state.y !== null && monitors.some((monitor) =>
-      state.x! + 80 >= monitor.position.x && state.y! + 50 >= monitor.position.y &&
-      state.x! < monitor.position.x + monitor.size.width && state.y! < monitor.position.y + monitor.size.height
-    );
-    if (valid) await win.setPosition(new PhysicalPosition(state.x!, state.y!)); else await win.center();
-  } catch (error) {
-    console.error("恢复窗口位置和尺寸失败，使用默认位置:", error);
-    try { await win.center(); } catch { /* window may not be ready */ }
-  }
 }

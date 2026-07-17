@@ -346,6 +346,11 @@ fn set_background_visible(app: tauri::AppHandle, visible: bool) {
     let _ = (app, visible);
 }
 
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[cfg(windows)]
 #[tauri::command]
 fn show_reminder_notification(
@@ -572,7 +577,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 show_window(app);
                 emit_action(app, "settings");
             }
-            "quit" => app.exit(0),
+            "quit" => emit_action(app, "quit"),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -616,6 +621,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_background_appearance,
             set_background_visible,
+            quit_app,
             show_reminder_notification
         ])
         .setup(|app| {

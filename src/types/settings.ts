@@ -1,10 +1,14 @@
 export type ThemeName = "warm" | "light" | "dark";
+export type FontSizePreference = "small" | "medium" | "large";
 
 export interface WindowState {
   x: number | null;
   y: number | null;
   width: number;
   height: number;
+  maximized: boolean;
+  /** Null identifies window sizes saved by versions that used physical pixels. */
+  scaleFactor: number | null;
 }
 
 export interface AppSettings {
@@ -15,6 +19,7 @@ export interface AppSettings {
   showOnStartup: boolean;
   showCompleted: boolean;
   shortcut: string;
+  fontSize: FontSizePreference;
   window: WindowState;
 }
 
@@ -26,5 +31,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showOnStartup: true,
   showCompleted: true,
   shortcut: "Ctrl+Alt+Space",
-  window: { x: null, y: null, width: 360, height: 520 }
+  fontSize: "medium",
+  window: {
+    x: null,
+    y: null,
+    width: 400,
+    height: 580,
+    maximized: false,
+    scaleFactor: 1
+  }
 };
