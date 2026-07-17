@@ -5,6 +5,7 @@ import {
   type FontSizePreference,
   type ThemeName
 } from "../types/settings";
+import { isNoteStatusFilter } from "../types/filter";
 
 const THEMES = new Set<ThemeName>(["warm", "light", "dark"]);
 const FONT_SIZES = new Set<FontSizePreference>(["small", "medium", "large"]);
@@ -25,6 +26,10 @@ function coordinate(value: unknown): number | null {
 
 function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function categoryFilterId(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
 /**
@@ -72,6 +77,10 @@ export function normalizeSettings(value: unknown): AppSettings {
       ? saved.shortcut
       : DEFAULT_SETTINGS.shortcut,
     fontSize,
+    taskStatusFilter: isNoteStatusFilter(saved.taskStatusFilter)
+      ? saved.taskStatusFilter
+      : DEFAULT_SETTINGS.taskStatusFilter,
+    taskCategoryFilterId: categoryFilterId(saved.taskCategoryFilterId),
     window: {
       x: coordinate(savedWindow.x),
       y: coordinate(savedWindow.y),

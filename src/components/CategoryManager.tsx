@@ -26,7 +26,7 @@ export function CategoryManager(props: Props) {
 
   useEffect(() => {
     if (!props.open || deleteTarget) return;
-    closeButtonRef.current?.focus();
+    closeButtonRef.current?.focus({ preventScroll: true });
   }, [props.open, deleteTarget]);
 
   useEffect(() => {

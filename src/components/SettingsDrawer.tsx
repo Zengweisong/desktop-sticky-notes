@@ -34,7 +34,7 @@ export function SettingsDrawer(props: Props) {
 
   useEffect(() => {
     if (!props.open) return;
-    closeButtonRef.current?.focus();
+    closeButtonRef.current?.focus({ preventScroll: true });
   }, [props.open]);
 
   useEffect(() => {

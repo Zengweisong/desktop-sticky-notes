@@ -514,6 +514,38 @@ fn migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "separate plan time and all-day reminder metadata",
+            sql: r#"
+                ALTER TABLE notes ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0
+                  CHECK (is_all_day IN (0, 1));
+                ALTER TABLE notes ADD COLUMN all_day_reminder_time TEXT NULL;
+                ALTER TABLE repeat_series ADD COLUMN default_is_all_day INTEGER NOT NULL DEFAULT 0
+                  CHECK (default_is_all_day IN (0, 1));
+                ALTER TABLE repeat_series ADD COLUMN default_all_day_reminder_time TEXT NULL;
+
+                -- The old top-level due date becomes an all-day plan when no more
+                -- precise scheduled time exists. Keep due_at itself for rollback/export compatibility.
+                UPDATE notes
+                  SET scheduled_at = due_at || 'T00:00:00', is_all_day = 1
+                  WHERE scheduled_at IS NULL AND due_at IS NOT NULL AND length(due_at) >= 10;
+
+                -- Recover the offset from old independent reminder timestamps whenever possible.
+                -- reminder_at is intentionally never cleared: unconvertible legacy reminders remain active.
+                UPDATE notes
+                  SET reminder_offset_minutes = CAST(ROUND(
+                    (julianday(scheduled_at) - julianday(reminder_at)) * 1440
+                  ) AS INTEGER)
+                  WHERE scheduled_at IS NOT NULL AND reminder_at IS NOT NULL
+                    AND julianday(scheduled_at) >= julianday(reminder_at);
+
+                UPDATE notes
+                  SET all_day_reminder_time = COALESCE(strftime('%H:%M', reminder_at, 'localtime'), '09:00')
+                  WHERE is_all_day = 1 AND reminder_enabled = 1;
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

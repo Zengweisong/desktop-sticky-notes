@@ -341,7 +341,9 @@ function generationTime(series: RepeatSeries, occurrenceAt: string) {
 }
 
 function reminderAt(occurrenceAt: string, enabled: boolean, offset: number) {
-  return enabled ? new Date(new Date(occurrenceAt).getTime() - offset * 60_000).toISOString() : null;
+  if (!enabled) return null;
+  const date = new Date(occurrenceAt);
+  return new Date(date.getTime() - offset * 60_000).toISOString();
 }
 
 async function insertOccurrence(

@@ -1,3 +1,5 @@
+import type { NoteStatusFilter } from "./filter";
+
 export type ThemeName = "warm" | "light" | "dark";
 export type FontSizePreference = "small" | "medium" | "large";
 
@@ -20,6 +22,8 @@ export interface AppSettings {
   showCompleted: boolean;
   shortcut: string;
   fontSize: FontSizePreference;
+  taskStatusFilter: NoteStatusFilter;
+  taskCategoryFilterId: number | null;
   window: WindowState;
 }
 
@@ -32,6 +36,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showCompleted: true,
   shortcut: "Ctrl+Alt+Space",
   fontSize: "medium",
+  taskStatusFilter: "active",
+  taskCategoryFilterId: null,
   window: {
     x: null,
     y: null,

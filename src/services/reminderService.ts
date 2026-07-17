@@ -29,8 +29,10 @@ class ReminderServiceImpl {
 
   async scheduleReminder(input: NoteInput) {
     if (!input.reminderEnabled) return null;
-    const reminderAt = this.calculateReminderAt(input.scheduledAt, input.reminderOffsetMinutes || 0);
-    if (!reminderAt || new Date(reminderAt).getTime() < Date.now()) throw new Error("提醒时间不能早于当前时间");
+    const reminderAt = input.legacyReminderAt ||
+      this.calculateReminderAt(input.scheduledAt, input.reminderOffsetMinutes ?? 10);
+    if (!reminderAt) throw new Error("请先设置事项时间");
+    if (new Date(reminderAt).getTime() <= Date.now()) throw new Error("提醒时间已早于当前时间，请调整计划时间或提醒时间");
     if (isTauriRuntime()) {
       let granted = await isPermissionGranted();
       if (!granted) granted = (await requestPermission()) === "granted";

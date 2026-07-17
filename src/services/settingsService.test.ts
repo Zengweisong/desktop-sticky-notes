@@ -43,4 +43,15 @@ describe("normalizeSettings", () => {
     expect(settings.window.maximized).toBe(true);
     expect(settings.window.scaleFactor).toBe(1.5);
   });
+
+  it("keeps valid task filters and rejects stale filter values", () => {
+    expect(normalizeSettings({ taskStatusFilter: "today", taskCategoryFilterId: 8 })).toMatchObject({
+      taskStatusFilter: "today",
+      taskCategoryFilterId: 8
+    });
+    expect(normalizeSettings({ taskStatusFilter: "all", taskCategoryFilterId: -1 })).toMatchObject({
+      taskStatusFilter: "active",
+      taskCategoryFilterId: null
+    });
+  });
 });

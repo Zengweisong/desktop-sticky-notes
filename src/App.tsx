@@ -24,13 +24,12 @@ import {
 } from "./services/windowStateManager";
 import { startBackgroundTaskService } from "./services/backgroundTaskService";
 import { useSettingsStore } from "./stores/settingsStore";
-import { categoryIdFromFilter, type NoteFilter } from "./types/filter";
-import type { Note } from "./types/note";
+import type { NoteStatusFilter } from "./types/filter";
+import { filterNotes } from "./services/noteFilterService";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [filter, setFilter] = useState<NoteFilter>("all");
   const [quickCategoryId, setQuickCategoryId] = useState<number | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [ready, setReady] = useState(false);
@@ -108,7 +107,7 @@ export default function App() {
   useEffect(() => {
     const focusNote = (event: Event) => {
       const id = (event as CustomEvent<number>).detail;
-      setFilter("all");
+      void prefs.update({ taskStatusFilter: "active", taskCategoryFilterId: null });
       void notes.refresh().then(() => window.setTimeout(() => {
         const card = document.querySelector<HTMLElement>(`[data-note-id="${id}"]`);
         card?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -118,15 +117,18 @@ export default function App() {
     };
     window.addEventListener("focus-note", focusNote);
     return () => window.removeEventListener("focus-note", focusNote);
-  }, [notes.refresh]);
+  }, [notes.refresh, prefs.update]);
 
   useEffect(() => {
     if (categories.categories.length && (quickCategoryId == null || !categories.categories.some((category) => category.id === quickCategoryId))) {
       setQuickCategoryId(categories.categories.find((category) => category.isSystem)?.id ?? categories.categories[0].id);
     }
-    const selectedId = categoryIdFromFilter(filter);
-    if (selectedId != null && !categories.categories.some((category) => category.id === selectedId)) setFilter("all");
-  }, [categories.categories, filter, quickCategoryId]);
+    const selectedId = prefs.settings.taskCategoryFilterId;
+    if (prefs.loaded && !categories.loading && selectedId != null
+      && !categories.categories.some((category) => category.id === selectedId)) {
+      void prefs.update({ taskCategoryFilterId: null });
+    }
+  }, [categories.categories, categories.loading, prefs.loaded, prefs.settings.taskCategoryFilterId, prefs.update, quickCategoryId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -236,12 +238,17 @@ export default function App() {
       errorToast("快捷键无效或已被其他程序占用"); return false;
     }
   }, [errorToast, focusQuickInput, prefs.update, toast]);
-  const changeFilter = (next: NoteFilter) => {
-    setFilter(next);
-    const categoryId = categoryIdFromFilter(next);
-    if (categoryId != null) setQuickCategoryId(categoryId);
+  const changeStatusFilter = (next: NoteStatusFilter) => {
+    void prefs.update({ taskStatusFilter: next });
   };
-  const visibleNotes = filterNotes(notes.notes, filter, prefs.settings.showCompleted);
+  const changeCategoryFilter = (categoryId: number | null) => {
+    void prefs.update({ taskCategoryFilterId: categoryId });
+  };
+  const visibleNotes = filterNotes(
+    notes.notes,
+    prefs.settings.taskStatusFilter,
+    prefs.settings.taskCategoryFilterId
+  );
 
   return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize} ${(settingsOpen || categoriesOpen) ? "overlay-open" : ""}`}
     style={{ "--panel-opacity": String(prefs.settings.opacity / 100) } as React.CSSProperties}>
@@ -250,16 +257,20 @@ export default function App() {
         onOpenSettings={() => { setCategoriesOpen(false); setSettingsOpen(true); }} />
       <div className="quick-area"><QuickInput categories={categories.categories} categoryId={quickCategoryId}
         onCategoryChange={setQuickCategoryId} onAdd={notes.add} /></div>
-      <CategoryNav categories={categories.categories} notes={notes.notes} active={filter} onChange={changeFilter}
+      <CategoryNav categories={categories.categories} notes={notes.notes}
+        activeStatus={prefs.settings.taskStatusFilter} categoryId={prefs.settings.taskCategoryFilterId}
+        onStatusChange={changeStatusFilter} onCategoryChange={changeCategoryFilter}
         onManage={() => { setSettingsOpen(false); setCategoriesOpen(true); }} />
       <div className="list-area">
         {!ready ? <div className="loading-state"><span /><span /><span /></div> :
-          <NoteList notes={visibleNotes} categories={categories.categories} repeatSeries={notes.repeatSeries}
-            loading={notes.loading || categories.loading}
-            onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
-            onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)} onEdit={notes.edit}
-            onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
-            onMove={notes.move} onDelete={notes.remove} />}
+          <div className="filtered-list" key={`${prefs.settings.taskStatusFilter}:${prefs.settings.taskCategoryFilterId ?? "all"}`}>
+            <NoteList notes={visibleNotes} categories={categories.categories} repeatSeries={notes.repeatSeries}
+              loading={notes.loading || categories.loading}
+              onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
+              onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)} onEdit={notes.edit}
+              onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
+              onMove={notes.move} onDelete={notes.remove} />
+          </div>}
       </div>
       <footer><span>{visibleNotes.length} 项 · {notes.notes.filter((note) => !note.completed).length} 项待办</span>
         <button onClick={() => { setCategoriesOpen(false); setSettingsOpen(true); }}>个性化</button></footer>
@@ -272,20 +283,4 @@ export default function App() {
       onImported={refreshAll} toast={toast} />
     <Toast items={toasts} onDismiss={(id) => setToasts((items) => items.filter((item) => item.id !== id))} />
   </main>;
-}
-
-function filterNotes(notes: Note[], filter: NoteFilter, showCompleted: boolean) {
-  if (filter === "completed") return notes.filter((note) => note.completed);
-  if (filter === "active") return notes.filter((note) => !note.completed);
-  const today = localDateKey(new Date());
-  if (filter === "today") return notes.filter((note) =>
-    (note.scheduledAt ? localDateKey(new Date(note.scheduledAt)) : note.dueAt?.slice(0, 10)) === today &&
-    (showCompleted || !note.completed));
-  const categoryId = categoryIdFromFilter(filter);
-  if (categoryId != null) return notes.filter((note) => note.categoryId === categoryId && (showCompleted || !note.completed));
-  return showCompleted ? notes : notes.filter((note) => !note.completed);
-}
-
-function localDateKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

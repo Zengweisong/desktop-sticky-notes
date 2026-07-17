@@ -13,6 +13,7 @@ export interface Note {
   completedAt: string | null;
   dueAt: string | null;
   sortOrder: number;
+  /** 唯一的事项时间。数据库字段为 scheduled_at。 */
   scheduledAt: string | null;
   repeatSeriesId: number | null;
   repeatOccurrenceAt: string | null;
@@ -50,8 +51,12 @@ export interface NoteInput {
   details?: string | null;
   categoryId?: number | null;
   priority?: NotePriority;
-  dueAt?: string | null;
   scheduledAt?: string | null;
+  /** 仅供编辑旧版无法换算为提前量的提醒，保存时保持其原始时间。 */
+  legacyReminderAt?: string | null;
+  /** 事项时间控件的临时草稿，不直接持久化。 */
+  planDate?: string;
+  planTime?: string;
   reminderEnabled?: boolean;
   reminderOffsetMinutes?: number;
   repeatEnabled?: boolean;

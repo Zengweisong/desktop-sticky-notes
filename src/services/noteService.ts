@@ -75,12 +75,12 @@ export async function createNote(input: NoteInput): Promise<Note> {
     );
     const result = await db.execute(
       `INSERT INTO notes
-        (content, title, details, category_id, priority, due_at, scheduled_at, reminder_enabled,
+        (content, title, details, category_id, priority, scheduled_at, reminder_enabled,
          reminder_at, reminder_offset_minutes, created_at, updated_at, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, $12)`,
-      [title, title, input.details?.trim() || null, categoryId, input.priority || "normal", input.dueAt || null,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)`,
+      [title, title, input.details?.trim() || null, categoryId, input.priority || "normal",
         input.scheduledAt || null, input.reminderEnabled ? 1 : 0, reminderAt,
-        input.reminderOffsetMinutes || 0, now, order[0].next_order]
+        input.reminderOffsetMinutes ?? 10, now, order[0].next_order]
     );
     const rows = await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes WHERE id = $1`, [result.lastInsertId]);
     return fromRow(rows[0]);
@@ -117,17 +117,17 @@ export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
     }
     await db.execute(
       `UPDATE notes SET content = $1, title = $1, details = $2, category_id = $3,
-       priority = $4, due_at = $5, scheduled_at = $6,
+       priority = $4, scheduled_at = $5,
        reminder_triggered_at = CASE
-         WHEN reminder_enabled != $7 OR reminder_at IS NOT $8 THEN NULL ELSE reminder_triggered_at END,
-       reminder_enabled = $7, reminder_at = $8, reminder_offset_minutes = $9,
+         WHEN reminder_enabled != $6 OR reminder_at IS NOT $7 THEN NULL ELSE reminder_triggered_at END,
+       reminder_enabled = $6, reminder_at = $7, reminder_offset_minutes = $8,
        repeat_occurrence_at = CASE
          WHEN repeat_series_id IS NULL THEN NULL
-         WHEN $10 = 'occurrence' THEN repeat_occurrence_at ELSE $6 END,
-       updated_at = $11 WHERE id = $12`,
-      [title, input.details?.trim() || null, categoryId, input.priority || "normal", input.dueAt || null,
+         WHEN $9 = 'occurrence' THEN repeat_occurrence_at ELSE $5 END,
+       updated_at = $10 WHERE id = $11`,
+      [title, input.details?.trim() || null, categoryId, input.priority || "normal",
         input.scheduledAt || null, input.reminderEnabled ? 1 : 0, computedReminderAt,
-        input.reminderOffsetMinutes || 0, input.repeatEditScope || "series", new Date().toISOString(), id]
+        input.reminderOffsetMinutes ?? 10, input.repeatEditScope || "series", new Date().toISOString(), id]
     );
   } catch (error) {
     console.error("编辑事项失败:", error);

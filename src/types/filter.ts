@@ -1,5 +1,5 @@
-export type NoteFilter = "all" | "today" | "active" | "completed" | `category:${number}`;
+export type NoteStatusFilter = "active" | "today" | "completed";
 
-export function categoryIdFromFilter(filter: NoteFilter): number | null {
-  return filter.startsWith("category:") ? Number(filter.slice("category:".length)) : null;
+export function isNoteStatusFilter(value: unknown): value is NoteStatusFilter {
+  return value === "active" || value === "today" || value === "completed";
 }

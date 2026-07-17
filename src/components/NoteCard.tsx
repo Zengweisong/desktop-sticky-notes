@@ -33,7 +33,6 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
   const [details, setDetails] = useState(note.details || "");
   const [categoryId, setCategoryId] = useState(note.categoryId);
   const [priority, setPriority] = useState<NotePriority>(note.priority);
-  const [dueAt, setDueAt] = useState(note.dueAt?.slice(0, 10) || "");
   const [schedule, setSchedule] = useState<NoteUpdate>(() => scheduleFrom(note, repeatSeries));
   const [overflows, setOverflows] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -59,7 +58,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
-  }, [editing, title, details, categoryId, priority, dueAt, schedule]);
+  }, [editing, title, details, categoryId, priority, schedule]);
   useEffect(() => {
     if (!reminderVisible) return;
     const reminderTime = new Date(note.reminderAt!).getTime();
@@ -73,7 +72,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
 
   const resetDraft = () => {
     setTitle(note.title); setDetails(note.details || ""); setCategoryId(note.categoryId);
-    setPriority(note.priority); setDueAt(note.dueAt?.slice(0, 10) || "");
+    setPriority(note.priority);
     setSchedule(scheduleFrom(note, repeatSeries));
   };
   const startEdit = () => { resetDraft(); setEditing(true); };
@@ -81,7 +80,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
     if (!editing || busy || composing.current) return;
     if (!title.trim()) { titleRef.current?.focus(); return; }
     setBusy(true);
-    if (await onEdit({ ...schedule, title, details, categoryId, priority, dueAt: dueAt || null })) setEditing(false);
+    if (await onEdit({ ...schedule, title, details, categoryId, priority })) setEditing(false);
     setBusy(false);
   };
   const cancel = () => { resetDraft(); setEditing(false); };
@@ -110,6 +109,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
         <textarea value={details} rows={2} disabled={busy} placeholder="详细备注（可选）"
           onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
           onChange={(event) => setDetails(event.target.value)} onKeyDown={handleEditorKey} />
+        <div className="edit-section-title">分类与优先级</div>
         <div className="note-edit-fields">
           <select value={categoryId ?? ""} onChange={(event) => setCategoryId(Number(event.target.value))} aria-label="所属类别">
             {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -117,7 +117,6 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
           <select value={priority} onChange={(event) => setPriority(event.target.value as NotePriority)} aria-label="优先级">
             <option value="low">低优先级</option><option value="normal">普通</option><option value="high">高优先级</option>
           </select>
-          <input type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} aria-label="截止日期" />
         </div>
         {repeatSeries && <label className="repeat-edit-scope"><span>编辑范围</span><select
           value={schedule.repeatEditScope || "occurrence"}
@@ -133,13 +132,13 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
         <div className="note-meta">
           {category && <span className="category-badge" title={category.name}><i style={{ backgroundColor: category.color }} />{category.name}</span>}
           {note.priority !== "normal" && <span className={`priority-badge ${note.priority}`}>{note.priority === "high" ? "高优先级" : "低优先级"}</span>}
-          {note.dueAt && <span className={`due-badge ${isOverdue(note) ? "overdue" : ""}`}><Calendar size={11} />{formatDueDate(note.dueAt)}</span>}
+          {note.scheduledAt && <span className={`due-badge ${isPlanPast(note) ? "overdue" : ""}`}><Calendar size={11} />{formatPlanTime(note)}</span>}
           {repeatSeries && <span className="repeat-badge"><Repeat2 size={11} />{describeRepeat(repeatSeries)}</span>}
           {reminderVisible && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
         </div>
         {expanded && (reminderVisible || repeatSeries) && <div className="note-schedule-details">
-          <div><b>事项时间</b><span>{note.scheduledAt ? formatFullDateTime(note.scheduledAt) : "未设置"}</span></div>
-          {reminderVisible && <div><b>提醒设置</b><span>{formatReminder(note, Boolean(repeatSeries))}</span></div>}
+          <div><b>事项时间</b><span>{note.scheduledAt ? formatPlanTime(note) : "未设置"}</span></div>
+          {reminderVisible && <div><b>提醒</b><span>{formatReminder(note, Boolean(repeatSeries))}</span></div>}
           <div><b>重复规则</b><span>{repeatSeries ? `${describeRepeat(repeatSeries)} · ${repeatSeries.active ? "进行中" : "已暂停"}` : "不重复"}</span></div>
           {repeatSeries && onToggleRepeatActive && <button className="repeat-pause-button" disabled={busy}
             onClick={() => void toggle(onToggleRepeatActive)}>{repeatSeries.active ? "暂停后续生成" : "恢复后续生成"}</button>}
@@ -155,15 +154,9 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
   </article>;
 }
 
-function formatDueDate(value: string) {
-  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
-}
-
-function isOverdue(note: Note) {
-  if (note.completed || !note.dueAt) return false;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return new Date(`${note.dueAt.slice(0, 10)}T00:00:00`) < today;
+function isPlanPast(note: Note) {
+  if (note.completed || !note.scheduledAt) return false;
+  return new Date(note.scheduledAt).getTime() < Date.now();
 }
 
 export function isUpcomingReminder(note: Note, now = Date.now()) {
@@ -178,6 +171,7 @@ function scheduleFrom(note: Note, series?: RepeatSeries): NoteUpdate {
     scheduledAt: note.scheduledAt,
     reminderEnabled: note.reminderEnabled,
     reminderOffsetMinutes: note.reminderOffsetMinutes,
+    legacyReminderAt: isLegacyReminder(note) ? note.reminderAt : null,
     repeatEnabled: Boolean(series),
     repeatType: series?.repeatType || "daily",
     repeatInterval: series?.repeatInterval || 1,
@@ -198,6 +192,19 @@ function formatReminder(note: Note, recurring: boolean) {
     return `提前 ${note.reminderOffsetMinutes} 分钟`;
   }
   return formatFullDateTime(note.reminderAt!);
+}
+
+function isLegacyReminder(note: Note) {
+  if (!note.reminderEnabled || !note.reminderAt) return false;
+  if (!note.scheduledAt) return true;
+  const plan = new Date(note.scheduledAt);
+  const expected = plan.getTime() - note.reminderOffsetMinutes * 60_000;
+  return Math.abs(expected - new Date(note.reminderAt).getTime()) > 60_000;
+}
+
+function formatPlanTime(note: Note) {
+  if (!note.scheduledAt) return "未设置";
+  return formatFullDateTime(note.scheduledAt);
 }
 
 function formatFullDateTime(value: string) {
