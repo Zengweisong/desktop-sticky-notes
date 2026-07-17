@@ -338,17 +338,17 @@ textarea::placeholder, input::placeholder {
 }
 .filter-tab, .category-filter-trigger {
   min-width: 0;
-  min-height: 42px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font-size: var(--type-filter);
+  font-size: 14px;
   font-weight: 500;
   line-height: var(--line-height-ui);
   white-space: nowrap;
@@ -358,13 +358,13 @@ textarea::placeholder, input::placeholder {
 .filter-tab:hover, .category-filter-trigger:hover { color: var(--text); background: rgba(var(--card-rgb), .28); }
 .filter-tab.selected {
   color: var(--text);
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
   font-weight: 600;
 }
 .filter-tab span, .category-filter-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .filter-tab b {
   color: var(--muted);
-  font-size: var(--type-meta);
+  font-size: 11px;
   font-weight: 400;
   line-height: 1;
   transition: opacity 180ms ease-out;
@@ -459,13 +459,13 @@ textarea::placeholder, input::placeholder {
   position: relative;
   min-width: 0;
   display: grid;
-  grid-template-columns: 16px 26px minmax(0, 1fr) auto;
+  grid-template-columns: 14px 24px minmax(0, 1fr) auto;
   align-items: start;
-  gap: 8px;
-  min-height: 72px;
-  padding: 14px 11px 13px 8px;
+  gap: 7px;
+  min-height: 64px;
+  padding: 10px 10px 10px 7px;
   border: 1px solid color-mix(in srgb, var(--card-border) 84%, white);
-  border-radius: 16px;
+  border-radius: 12px;
   background: rgba(var(--card-rgb), calc(var(--panel-opacity) * .68));
   transform: translate3d(0, 0, 0);
   transition: transform 180ms cubic-bezier(.22,.8,.2,1), border-color 180ms ease-out, opacity 160ms ease-out;
@@ -494,8 +494,8 @@ textarea::placeholder, input::placeholder {
 .note-card.drop-after::after { bottom: -6px; }
 .note-enter { animation: note-in 260ms cubic-bezier(.22,.8,.2,1); }
 .drag-handle {
-  width: 16px;
-  min-height: 30px;
+  width: 14px;
+  min-height: 28px;
   display: grid;
   place-items: center;
   margin: 0;
@@ -513,9 +513,9 @@ textarea::placeholder, input::placeholder {
 .drag-handle:active { cursor: grabbing; transform: none !important; }
 .drag-handle:disabled { cursor: default; opacity: .14; }
 .check-button {
-  width: 22px;
-  height: 22px;
-  margin-top: 2px;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
   display: grid;
   place-items: center;
   border: 1.5px solid color-mix(in srgb, var(--muted) 58%, transparent);
@@ -790,6 +790,154 @@ textarea::placeholder, input::placeholder {
 .reminder-details-block .reminder-options { margin-top: 0; }
 .reminder-details-block .schedule-message, .reminder-details-block .reminder-preview { grid-column: 2; }
 .note-edit-form .task-schedule-fields { grid-column: 1 / -1; }
+
+/* Desktop note editor: keep the shared scheduling behavior, but use a denser local scale. */
+.note-card:has(.note-edit-form) {
+  padding-top: 10px;
+  padding-right: 16px;
+  padding-bottom: 10px;
+}
+.note-edit-form {
+  --form-control-height: 40px;
+  --form-column-gap: 10px;
+  --control-radius: 9px;
+  --type-section-title: 15px;
+  --type-field-label: 14px;
+  --type-control: 14px;
+  --type-placeholder: 13px;
+  --type-meta: 11px;
+  gap: 10px;
+}
+.note-edit-form textarea,
+.note-edit-form .note-edit-fields select,
+.note-edit-form .note-edit-fields input,
+.note-edit-form .schedule-grid input,
+.note-edit-form .schedule-grid select,
+.note-edit-form .repeat-edit-scope select,
+.note-edit-form .schedule-control-row select,
+.note-edit-form .priority-setting select,
+.note-edit-form .reminder-options > select,
+.note-edit-form .custom-offset-row input,
+.note-edit-form .custom-offset-row select {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 34px 0 13px;
+  border-color: color-mix(in srgb, var(--card-border) 72%, transparent);
+  border-radius: 9px;
+  background: rgba(var(--input-rgb), .56);
+  font-size: 14px;
+  font-weight: 500;
+}
+.note-edit-form textarea {
+  height: 62px;
+  min-height: 62px;
+  padding: 9px 13px;
+  line-height: 1.45;
+}
+.note-edit-form textarea:first-child {
+  height: 42px;
+  min-height: 42px;
+  padding-block: 9px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: pre;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  resize: none;
+}
+.note-edit-form textarea:first-child::-webkit-scrollbar { display: none; }
+.note-edit-form textarea:focus-visible,
+.note-edit-form select:focus-visible,
+.note-edit-form input:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--accent) 76%, white);
+  outline-offset: 1px;
+}
+.note-edit-form .edit-section-title {
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.note-edit-form .note-edit-fields { gap: 10px; }
+.note-edit-form .repeat-edit-scope {
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 10px;
+  font-size: 12px;
+}
+.note-edit-form .task-schedule-fields {
+  overflow: visible;
+}
+.note-edit-form .schedule-title {
+  gap: 7px;
+  padding: 4px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.note-edit-form .task-schedule-fields svg {
+  width: 16px;
+  height: 16px;
+}
+.note-edit-form .schedule-block {
+  padding: 8px 0;
+  border-color: color-mix(in srgb, var(--separator) 72%, transparent);
+}
+.note-edit-form .schedule-title + .schedule-block { padding-top: 0; }
+.note-edit-form .schedule-label {
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+.note-edit-form .schedule-label small {
+  margin-left: 5px;
+  font-size: 11px;
+}
+.note-edit-form .plan-time-row { gap: 10px; }
+.note-edit-form .picker-input {
+  height: 40px;
+  gap: 8px;
+  padding: 0 12px;
+  border-color: color-mix(in srgb, var(--input-border) 72%, transparent);
+  border-radius: 9px;
+  background: rgba(var(--input-rgb), .48);
+  font-size: 14px;
+}
+.note-edit-form .picker-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.note-edit-form .schedule-control-row,
+.note-edit-form .reminder-heading {
+  min-height: 40px;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 10px;
+}
+.note-edit-form .schedule-control-row > span,
+.note-edit-form .reminder-heading > span {
+  gap: 7px;
+  font-size: 14px;
+}
+.note-edit-form .schedule-grid {
+  gap: 10px;
+  margin-top: 10px;
+}
+.note-edit-form .weekday-picker button { min-height: 32px; }
+.note-edit-form .reminder-options {
+  gap: 10px;
+  margin-top: 10px;
+}
+.note-edit-form .schedule-message,
+.note-edit-form .reminder-preview {
+  margin-top: 6px;
+  font-size: 11px;
+}
+.note-edit-form .note-edit-actions { gap: 6px; }
+.note-edit-form .note-edit-actions span { font-size: 11px; }
+.note-edit-form .note-edit-actions button {
+  min-height: 34px;
+  padding: 5px 11px;
+  border-radius: 9px;
+  font-size: 13px;
+}
 
 .empty-state { height: 100%; min-height: 190px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; color: var(--muted); }
 .empty-state strong { color: var(--text); font-size: var(--font-md); font-weight: 650; letter-spacing: -.01em; }

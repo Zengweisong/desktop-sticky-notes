@@ -174,7 +174,7 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
     {!showPrimaryRow && <section className="schedule-block reminder-block">
       <div className="reminder-heading">
         <span><Bell size={13} />提醒</span>
-        <button type="button" role="switch" aria-checked={reminderEnabled} aria-disabled={!hasPlan && !reminderEnabled}
+        <button type="button" role="switch" aria-label="提醒" aria-checked={reminderEnabled} aria-disabled={!hasPlan && !reminderEnabled}
           className={`switch-control ${reminderEnabled ? "on" : ""} ${!hasPlan && !reminderEnabled ? "disabled" : ""}`}
           onClick={toggleReminder}><i /></button>
       </div>
@@ -280,7 +280,7 @@ function unitMax(unit: OffsetUnit) { return unit === "days" ? 365 : unit === "ho
 function clampInt(value: string, min: number, max: number) { return Math.min(max, Math.max(min, Math.floor(Number(value) || min))); }
 function formatLocalDate(value: string) {
   const [year, month, day] = value.split("-").map(Number);
-  return `${year}年${month}月${day}日`;
+  return `${year}/${month}/${day}`;
 }
 function formatLocalDateTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
