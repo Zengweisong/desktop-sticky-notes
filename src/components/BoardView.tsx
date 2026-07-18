@@ -248,17 +248,17 @@ export function BoardView(props: Props) {
                   if (column.type === "custom") { setRenameValue(column.name); setRenamingColumnId(column.id); }
                 }}>{column.name}</h3>}
               <span className="board-count">{columnNotes.length}</span>
-              <div className="board-more-wrap">
-                <button className="board-more" aria-label={`${column.name} 更多操作`} onClick={(event) => {
+              {column.type === "custom" && <div className="board-more-wrap">
+                <button className="board-more" aria-label={`${column.name} 更多操作`} aria-expanded={menuColumnId === column.id} onClick={(event) => {
                   event.stopPropagation(); setMenuColumnId((id) => id === column.id ? null : column.id);
                 }}><MoreHorizontal size={16} /></button>
                 {menuColumnId === column.id && <div className="board-menu column-menu">
-                  {column.type === "custom" && <button onClick={() => { setRenameValue(column.name); setRenamingColumnId(column.id); setMenuColumnId(null); }}><Pencil size={13} />重命名</button>}
-                  {column.id !== "todo" && column.id !== "completed" && <button className="danger" onClick={() => {
+                  <button onClick={() => { setRenameValue(column.name); setRenamingColumnId(column.id); setMenuColumnId(null); }}><Pencil size={13} />重命名</button>
+                  <button className="danger" onClick={() => {
                     setDeleteColumnId(column.id); setMoveDeletedNotesTo(columns.find((item) => item.id !== column.id)?.id || ""); setMenuColumnId(null);
-                  }}><Trash2 size={13} />删除栏目</button>}
+                  }}><Trash2 size={13} />删除栏目</button>
                 </div>}
-              </div>
+              </div>}
             </header>
             <div className="board-column-body">
               <div className="board-cards">
