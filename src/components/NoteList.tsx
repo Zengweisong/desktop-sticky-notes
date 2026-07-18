@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { Category } from "../types/category";
 import type { Note, NoteUpdate } from "../types/note";
 import type { RepeatSeries } from "../types/repeat";
@@ -11,6 +12,9 @@ interface Props {
   categories: Category[];
   repeatSeries?: RepeatSeries[];
   loading: boolean;
+  showCompleted?: boolean;
+  completedExpanded?: boolean;
+  onCompletedExpandedChange?: (expanded: boolean) => void;
   onToggleCompleted: (note: Note) => Promise<boolean>;
   onTogglePinned: (note: Note) => Promise<boolean>;
   onToggleRepeatActive?: (series: RepeatSeries) => Promise<boolean>;
@@ -21,7 +25,8 @@ interface Props {
 
 type DropTarget = { id: number; position: "before" | "after" };
 
-export function NoteList({ notes, categories, repeatSeries = [], loading, onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onMove, onDelete }: Props) {
+export function NoteList({ notes, categories, repeatSeries = [], loading, showCompleted = false, completedExpanded = false,
+  onCompletedExpandedChange, onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onMove, onDelete }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<Note | null>(null);
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [dragOffsetY, setDragOffsetY] = useState(0);
@@ -31,7 +36,8 @@ export function NoteList({ notes, categories, repeatSeries = [], loading, onTogg
   const dragStartYRef = useRef(0);
   const dragActivatedRef = useRef(false);
   if (loading) return <div className="loading-state"><span /><span /><span /></div>;
-  if (!notes.length) return <EmptyState />;
+  const activeNotes = notes.filter((note) => !note.completed);
+  const completedNotes = notes.filter((note) => note.completed);
   const finishDrag = () => {
     draggedIdRef.current = null;
     dropTargetRef.current = null;
@@ -40,11 +46,10 @@ export function NoteList({ notes, categories, repeatSeries = [], loading, onTogg
     setDropTarget(null);
     dragActivatedRef.current = false;
   };
-  return <>
-    <div className="note-list">{notes.map((note, index) => {
+  const renderNotes = (items: Note[], completedGroup = false) => <div className={`note-list ${completedGroup ? "completed-note-list" : ""}`}>{items.map((note, index) => {
       const series = repeatSeries.find((item) => item.id === note.repeatSeriesId);
       return <NoteCard key={note.id} note={note}
-      repeatSeries={series} categories={categories} isNew={index === 0}
+      repeatSeries={series} categories={categories} isNew={!completedGroup && index === 0}
       dragging={draggedId === note.id} dropPosition={dropTarget?.id === note.id ? dropTarget.position : null}
       dragOffsetY={draggedId === note.id ? dragOffsetY : 0}
       onPointerDown={(event) => {
@@ -95,7 +100,17 @@ export function NoteList({ notes, categories, repeatSeries = [], loading, onTogg
       onToggleCompleted={() => onToggleCompleted(note)} onTogglePinned={() => onTogglePinned(note)}
       onToggleRepeatActive={series && onToggleRepeatActive ? () => onToggleRepeatActive(series) : undefined}
       onEdit={(input) => onEdit(note.id, input)} onRequestDelete={() => setDeleteTarget(note)} />;
-    })}</div>
+    })}</div>;
+  return <>
+    {activeNotes.length ? renderNotes(activeNotes) : (!showCompleted || !completedNotes.length) && <EmptyState />}
+    {showCompleted && completedNotes.length > 0 && <section className={`completed-section ${completedExpanded ? "expanded" : ""}`}>
+      <button type="button" className="completed-section-trigger" aria-expanded={completedExpanded}
+        onClick={() => onCompletedExpandedChange?.(!completedExpanded)}>
+        <span>已完成 <b>{completedNotes.length}</b></span>
+        {completedExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+      </button>
+      {completedExpanded && renderNotes(completedNotes, true)}
+    </section>}
     {deleteTarget?.repeatSeriesId != null ? <div className="dialog-backdrop" onMouseDown={() => setDeleteTarget(null)}>
       <div className="confirm-dialog repeat-delete-dialog" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <h3>删除重复事项</h3><p>只删除本次不会影响后续生成；删除整个系列会移除所有实例并停止生成。</p>

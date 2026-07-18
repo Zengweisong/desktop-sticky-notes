@@ -6,7 +6,7 @@ import {
   type PriorityFilter,
   type ThemeName
 } from "../types/settings";
-import { isNoteStatusFilter } from "../types/filter";
+import { isNoteTimeFilter } from "../types/filter";
 
 const THEMES = new Set<ThemeName>(["warm", "light", "dark"]);
 const FONT_SIZES = new Set<FontSizePreference>(["small", "medium", "large"]);
@@ -86,13 +86,14 @@ export function normalizeSettings(value: unknown): AppSettings {
     launchOnStartup: booleanValue(saved.launchOnStartup, DEFAULT_SETTINGS.launchOnStartup),
     showOnStartup: booleanValue(saved.showOnStartup, DEFAULT_SETTINGS.showOnStartup),
     showCompleted: booleanValue(saved.showCompleted, DEFAULT_SETTINGS.showCompleted),
+    completedSectionExpanded: booleanValue(saved.completedSectionExpanded, DEFAULT_SETTINGS.completedSectionExpanded),
     shortcut: typeof saved.shortcut === "string" && saved.shortcut.trim().length > 0 && saved.shortcut.length <= 80
       ? saved.shortcut
       : DEFAULT_SETTINGS.shortcut,
     fontSize,
-    taskStatusFilter: isNoteStatusFilter(saved.taskStatusFilter)
-      ? saved.taskStatusFilter
-      : DEFAULT_SETTINGS.taskStatusFilter,
+    taskTimeFilter: isNoteTimeFilter(saved.taskTimeFilter)
+      ? saved.taskTimeFilter
+      : saved.taskStatusFilter === "today" ? "today" : DEFAULT_SETTINGS.taskTimeFilter,
     taskCategoryFilterId: categoryFilterId(saved.taskCategoryFilterId),
     taskSearch: typeof saved.taskSearch === "string" ? saved.taskSearch.slice(0, 200) : "",
     taskPriorityFilter: PRIORITIES.has(saved.taskPriorityFilter as PriorityFilter)

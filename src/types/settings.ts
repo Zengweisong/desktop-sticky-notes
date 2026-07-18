@@ -1,4 +1,4 @@
-import type { NoteStatusFilter } from "./filter";
+import type { NoteTimeFilter } from "./filter";
 
 export type ThemeName = "warm" | "light" | "dark";
 export type FontSizePreference = "small" | "medium" | "large";
@@ -22,9 +22,10 @@ export interface AppSettings {
   launchOnStartup: boolean;
   showOnStartup: boolean;
   showCompleted: boolean;
+  completedSectionExpanded: boolean;
   shortcut: string;
   fontSize: FontSizePreference;
-  taskStatusFilter: NoteStatusFilter;
+  taskTimeFilter: NoteTimeFilter;
   taskCategoryFilterId: number | null;
   taskSearch: string;
   taskPriorityFilter: PriorityFilter;
@@ -40,10 +41,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   alwaysOnTop: true,
   launchOnStartup: false,
   showOnStartup: true,
-  showCompleted: true,
+  showCompleted: false,
+  completedSectionExpanded: false,
   shortcut: "Ctrl+Alt+Space",
   fontSize: "medium",
-  taskStatusFilter: "active",
+  taskTimeFilter: "all",
   taskCategoryFilterId: null,
   taskSearch: "",
   taskPriorityFilter: "all",

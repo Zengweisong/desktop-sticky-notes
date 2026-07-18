@@ -44,14 +44,23 @@ describe("normalizeSettings", () => {
     expect(settings.window.scaleFactor).toBe(1.5);
   });
 
-  it("keeps valid task filters and rejects stale filter values", () => {
-    expect(normalizeSettings({ taskStatusFilter: "today", taskCategoryFilterId: 8 })).toMatchObject({
-      taskStatusFilter: "today",
+  it("keeps valid task filters, migrates today, and rejects stale filter values", () => {
+    expect(normalizeSettings({ taskTimeFilter: "future", taskCategoryFilterId: 8 })).toMatchObject({
+      taskTimeFilter: "future",
       taskCategoryFilterId: 8
     });
-    expect(normalizeSettings({ taskStatusFilter: "all", taskCategoryFilterId: -1 })).toMatchObject({
-      taskStatusFilter: "active",
+    expect(normalizeSettings({ taskStatusFilter: "today" })).toMatchObject({ taskTimeFilter: "today" });
+    expect(normalizeSettings({ taskTimeFilter: "completed", taskCategoryFilterId: -1 })).toMatchObject({
+      taskTimeFilter: "all",
       taskCategoryFilterId: null
+    });
+  });
+
+  it("defaults completed items to hidden and persists the completed section state", () => {
+    expect(normalizeSettings({})).toMatchObject({ showCompleted: false, completedSectionExpanded: false });
+    expect(normalizeSettings({ showCompleted: true, completedSectionExpanded: true })).toMatchObject({
+      showCompleted: true,
+      completedSectionExpanded: true
     });
   });
 });

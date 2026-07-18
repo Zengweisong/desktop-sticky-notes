@@ -91,7 +91,12 @@ export function SettingsDrawer(props: Props) {
           <Toggle label="始终置顶" checked={props.settings.alwaysOnTop} onChange={(alwaysOnTop) => void props.onUpdate({ alwaysOnTop })} />
           <Toggle label="开机自动启动" checked={props.settings.launchOnStartup} onChange={(enabled) => void props.onLaunchOnStartupChange(enabled)} />
           <Toggle label="应用启动时显示窗口" checked={props.settings.showOnStartup} onChange={(showOnStartup) => void props.onUpdate({ showOnStartup })} />
-          <Toggle label="显示已完成事项" checked={props.settings.showCompleted} onChange={(showCompleted) => void props.onUpdate({ showCompleted })} />
+        </div>
+        <div className="setting-block"><div className="setting-heading"><span>事项显示</span></div>
+          <div className="setting-list display-setting-list">
+            <Toggle label="显示已完成事项" description="开启后，在列表底部显示已经完成的事项。"
+              checked={props.settings.showCompleted} onChange={(showCompleted) => void props.onUpdate({ showCompleted })} />
+          </div>
         </div>
         <button className={`shortcut-card ${recordingShortcut ? "recording" : ""}`} type="button"
           disabled={shortcutBusy} onClick={() => setRecordingShortcut(true)}
@@ -120,8 +125,9 @@ export function SettingsDrawer(props: Props) {
   </>;
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <label className="toggle-row"><span>{label}</span><input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /><i /></label>;
+function Toggle({ label, description, checked, onChange }: { label: string; description?: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return <label className="toggle-row"><span className="toggle-copy"><strong>{label}</strong>{description && <small>{description}</small>}</span>
+    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /><i /></label>;
 }
 
 export function shortcutFromKeyboardEvent(event: Pick<React.KeyboardEvent, "altKey" | "ctrlKey" | "metaKey" | "shiftKey" | "code">): string | null {

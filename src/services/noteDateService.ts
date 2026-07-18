@@ -4,7 +4,7 @@ export function isScheduledOnLocalDate(note: Pick<Note, "scheduledAt">, localDat
   return isIsoValueOnLocalDate(note.scheduledAt, localDate);
 }
 
-/** “今日”视图包含计划、截止或提醒日期在当天的未完成事项。 */
+/** “今天”筛选匹配计划、截止或提醒日期在当天的事项。 */
 export function isNoteRelevantOnLocalDate(
   note: Pick<Note, "scheduledAt" | "dueAt" | "reminderAt">,
   localDate: Date

@@ -136,6 +136,50 @@ describe("NoteList drag sorting", () => {
     await act(async () => root.unmount());
     vi.useRealTimers();
   });
+
+  it("keeps completed items hidden until the persisted section is enabled and expanded", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const completed = makeNote(9, "已经完成", true);
+    const onExpandedChange = vi.fn();
+    const onToggleCompleted = vi.fn().mockResolvedValue(true);
+    const common = {
+      notes: [makeNote(8, "仍需处理"), completed], categories: [], loading: false,
+      onToggleCompleted, onTogglePinned: vi.fn(), onEdit: vi.fn(), onMove: vi.fn(), onDelete: vi.fn()
+    };
+
+    await act(async () => root.render(<NoteList {...common} />));
+    expect(container.textContent).toContain("仍需处理");
+    expect(container.textContent).not.toContain("已经完成");
+    expect(container.querySelector(".completed-section")).toBeNull();
+
+    await act(async () => root.render(<NoteList {...common} showCompleted completedExpanded={false}
+      onCompletedExpandedChange={onExpandedChange} />));
+    expect(container.querySelector(".completed-section-trigger")?.textContent).toContain("已完成 1");
+    expect(container.textContent).not.toContain("已经完成");
+    await act(async () => container!.querySelector<HTMLButtonElement>(".completed-section-trigger")!.click());
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+
+    await act(async () => root.render(<NoteList {...common} showCompleted completedExpanded
+      onCompletedExpandedChange={onExpandedChange} />));
+    expect(container.textContent).toContain("已经完成");
+    const completedCard = container.querySelector<HTMLElement>('[data-note-id="9"]')!;
+    await act(async () => completedCard.querySelector<HTMLButtonElement>(".check-button")!.click());
+    expect(onToggleCompleted).toHaveBeenCalledWith(completed);
+    await act(async () => root.unmount());
+  });
+
+  it("does not render a completed section when no completed items exist", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<NoteList notes={[makeNote(10, "待办")]} categories={[]} loading={false}
+      showCompleted completedExpanded onCompletedExpandedChange={vi.fn()}
+      onToggleCompleted={vi.fn()} onTogglePinned={vi.fn()} onEdit={vi.fn()} onMove={vi.fn()} onDelete={vi.fn()} />));
+    expect(container.querySelector(".completed-section")).toBeNull();
+    await act(async () => root.unmount());
+  });
 });
 
 function pointerEvent(type: string, clientY: number) {
@@ -149,13 +193,14 @@ function pointerEvent(type: string, clientY: number) {
   return event;
 }
 
-function makeNote(id: number, title: string): Note {
+function makeNote(id: number, title: string, completed = false): Note {
   return {
-    id, title, details: null, categoryId: null, completed: false, pinned: false,
-    priority: "normal", createdAt: `2026-07-15T00:00:0${id}.000Z`,
-    updatedAt: `2026-07-15T00:00:0${id}.000Z`, completedAt: null, dueAt: null, sortOrder: 0,
+    id, title, details: null, categoryId: null, completed, pinned: false,
+    priority: "normal", createdAt: `2026-07-15T00:00:${String(id).padStart(2, "0")}.000Z`,
+    updatedAt: `2026-07-15T00:00:${String(id).padStart(2, "0")}.000Z`, completedAt: completed ? "2026-07-16T00:00:00.000Z" : null, dueAt: null, sortOrder: 0,
     scheduledAt: null, repeatSeriesId: null, repeatOccurrenceAt: null,
     reminderEnabled: false, reminderAt: null, reminderOffsetMinutes: 0, reminderTriggeredAt: null,
-    boardColumnId: "todo", boardOrder: id * 10, status: "todo", previousBoardColumnId: null
+    boardColumnId: completed ? "completed" : "todo", boardOrder: id * 10,
+    status: completed ? "completed" : "todo", previousBoardColumnId: null
   };
 }

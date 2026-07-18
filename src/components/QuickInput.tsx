@@ -89,10 +89,10 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
       </div>
       <button className={`advanced-trigger ${advancedOpen ? "selected" : ""}`} type="button"
         onClick={() => setAdvancedOpen((open) => !open)} aria-label="时间安排" title="时间安排">
-        <SlidersHorizontal size={19} />
+        <SlidersHorizontal size={16} />
       </button>
       <button className="add-button" disabled={!value.trim() || submitting} onClick={() => void submit()} aria-label="添加事项">
-        <Plus size={20} />
+        <Plus size={16} />
       </button>
     </div>
     {advancedOpen && <div className="quick-advanced-panel">
