@@ -23,12 +23,13 @@ interface Props {
   onToggleRepeatActive?: () => Promise<boolean>;
   onEdit: (input: NoteUpdate) => Promise<boolean>;
   onRequestDelete: () => void;
+  startEditing?: boolean;
 }
 
 export function NoteCard({ note, repeatSeries, categories, isNew, dragging, dragOffsetY = 0, dropPosition, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
-  onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onRequestDelete }: Props) {
+  onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onRequestDelete, startEditing = false }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
   const [title, setTitle] = useState(note.title);
   const [details, setDetails] = useState(note.details || "");
   const [categoryId, setCategoryId] = useState(note.categoryId);

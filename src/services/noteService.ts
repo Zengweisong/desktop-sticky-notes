@@ -5,10 +5,13 @@ import { listCategories } from "./categoryService";
 import { ReminderService } from "./reminderService";
 import { createRepeatSeries, deleteRepeatSeries, listRepeatSeries, setRepeatSeriesActive, stopRepeatSeries, updateRepeatSeries } from "./repeatTaskService";
 import type { RepeatSeries } from "../types/repeat";
+import { ensureBoardPlacement, setBoardNoteCompleted } from "./boardService";
+import { COMPLETED_COLUMN_ID, TODO_COLUMN_ID } from "../types/board";
 
 const SELECT_FIELDS = `id, title, content, details, category_id, completed, pinned, priority,
   created_at, updated_at, completed_at, due_at, sort_order, scheduled_at, repeat_series_id,
-  repeat_occurrence_at, reminder_enabled, reminder_at, reminder_offset_minutes, reminder_triggered_at`;
+  repeat_occurrence_at, reminder_enabled, reminder_at, reminder_offset_minutes, reminder_triggered_at,
+  board_column_id, board_order, status, previous_board_column_id`;
 const ORDER_BY = `ORDER BY CASE WHEN completed = 0 AND pinned = 1 THEN 0 WHEN completed = 0 THEN 1 ELSE 2 END,
   sort_order DESC, created_at DESC`;
 
@@ -32,7 +35,11 @@ function fromRow(row: NoteRow): Note {
     reminderEnabled: Boolean(row.reminder_enabled),
     reminderAt: row.reminder_at ?? null,
     reminderOffsetMinutes: row.reminder_offset_minutes ?? 0,
-    reminderTriggeredAt: row.reminder_triggered_at ?? null
+    reminderTriggeredAt: row.reminder_triggered_at ?? null,
+    boardColumnId: row.board_column_id || (row.completed ? COMPLETED_COLUMN_ID : TODO_COLUMN_ID),
+    boardOrder: row.board_order ?? row.sort_order,
+    status: row.status || (row.completed ? "completed" : "todo"),
+    previousBoardColumnId: row.previous_board_column_id ?? null
   };
 }
 
@@ -50,6 +57,7 @@ async function resolveCategoryId(categoryId?: number | null): Promise<number> {
 export async function listNotes(): Promise<Note[]> {
   try {
     const db = await getDatabase();
+    await ensureBoardPlacement();
     return (await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes ${ORDER_BY}`)).map(fromRow);
   } catch (error) {
     console.error("读取事项失败:", error);
@@ -65,8 +73,15 @@ export async function createNote(input: NoteInput): Promise<Note> {
     const db = await getDatabase();
     const now = new Date().toISOString();
     const categoryId = await resolveCategoryId(input.categoryId);
+    const boardColumnId = input.boardColumnId || TODO_COLUMN_ID;
+    const boardStatus = boardColumnId === COMPLETED_COLUMN_ID ? "completed" : boardColumnId === TODO_COLUMN_ID ? "todo" : "doing";
     if (input.repeatEnabled) {
       const created = await createRepeatSeries(input, categoryId);
+      await db.execute(
+        `UPDATE notes SET board_column_id=$1, status=$2, completed=$3,
+         completed_at=CASE WHEN $3=1 THEN $4 ELSE NULL END WHERE id=$5`,
+        [boardColumnId, boardStatus, boardStatus === "completed" ? 1 : 0, now, created.noteId]
+      );
       const rows = await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes WHERE id = $1`, [created.noteId]);
       return fromRow(rows[0]);
     }
@@ -76,11 +91,13 @@ export async function createNote(input: NoteInput): Promise<Note> {
     const result = await db.execute(
       `INSERT INTO notes
         (content, title, details, category_id, priority, scheduled_at, reminder_enabled,
-         reminder_at, reminder_offset_minutes, created_at, updated_at, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)`,
+         reminder_at, reminder_offset_minutes, created_at, updated_at, sort_order,
+         board_column_id, board_order, status, completed, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11, $12, $11, $13, $14, $15)`,
       [title, title, input.details?.trim() || null, categoryId, input.priority || "normal",
         input.scheduledAt || null, input.reminderEnabled ? 1 : 0, reminderAt,
-        input.reminderOffsetMinutes ?? 10, now, order[0].next_order]
+        input.reminderOffsetMinutes ?? 10, now, order[0].next_order, boardColumnId, boardStatus,
+        boardStatus === "completed" ? 1 : 0, boardStatus === "completed" ? now : null]
     );
     const rows = await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes WHERE id = $1`, [result.lastInsertId]);
     return fromRow(rows[0]);
@@ -138,11 +155,7 @@ export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
 export async function setNoteCompleted(id: number, completed: boolean): Promise<void> {
   try {
     if (completed) await ReminderService.cancelReminder(id);
-    const now = new Date().toISOString();
-    await (await getDatabase()).execute(
-      "UPDATE notes SET completed = $1, completed_at = $2, updated_at = $3 WHERE id = $4",
-      [completed ? 1 : 0, completed ? now : null, now, id]
-    );
+    await setBoardNoteCompleted(id, completed);
   } catch (error) { console.error("更新完成状态失败:", error); throw new Error("更新状态失败"); }
 }
 

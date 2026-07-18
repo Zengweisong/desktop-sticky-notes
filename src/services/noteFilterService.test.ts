@@ -53,6 +53,10 @@ function makeNote(
     reminderEnabled: Boolean(times.reminderAt),
     reminderAt: times.reminderAt ?? null,
     reminderOffsetMinutes: 0,
-    reminderTriggeredAt: null
+    reminderTriggeredAt: null,
+    boardColumnId: completed ? "completed" : "todo",
+    boardOrder: id * 10,
+    status: completed ? "completed" : "todo",
+    previousBoardColumnId: null
   };
 }

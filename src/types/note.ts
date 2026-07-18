@@ -1,4 +1,5 @@
 export type NotePriority = "low" | "normal" | "high";
+import type { BoardStatus } from "./board";
 
 export interface Note {
   id: number;
@@ -21,6 +22,10 @@ export interface Note {
   reminderAt: string | null;
   reminderOffsetMinutes: number;
   reminderTriggeredAt: string | null;
+  boardColumnId: string;
+  boardOrder: number;
+  status: BoardStatus;
+  previousBoardColumnId: string | null;
 }
 
 export interface NoteRow {
@@ -44,6 +49,10 @@ export interface NoteRow {
   reminder_at: string | null;
   reminder_offset_minutes: number;
   reminder_triggered_at: string | null;
+  board_column_id?: string | null;
+  board_order?: number | null;
+  status?: BoardStatus | null;
+  previous_board_column_id?: string | null;
 }
 
 export interface NoteInput {
@@ -68,6 +77,7 @@ export interface NoteInput {
   repeatEndDate?: string | null;
   repeatMaxOccurrences?: number | null;
   repeatEditScope?: "occurrence" | "series";
+  boardColumnId?: string;
 }
 
 export interface NoteUpdate extends NoteInput {}

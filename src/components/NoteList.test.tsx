@@ -155,6 +155,7 @@ function makeNote(id: number, title: string): Note {
     priority: "normal", createdAt: `2026-07-15T00:00:0${id}.000Z`,
     updatedAt: `2026-07-15T00:00:0${id}.000Z`, completedAt: null, dueAt: null, sortOrder: 0,
     scheduledAt: null, repeatSeriesId: null, repeatOccurrenceAt: null,
-    reminderEnabled: false, reminderAt: null, reminderOffsetMinutes: 0, reminderTriggeredAt: null
+    reminderEnabled: false, reminderAt: null, reminderOffsetMinutes: 0, reminderTriggeredAt: null,
+    boardColumnId: "todo", boardOrder: id * 10, status: "todo", previousBoardColumnId: null
   };
 }

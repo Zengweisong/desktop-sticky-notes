@@ -9,12 +9,15 @@ import { CategoryManager } from "./components/CategoryManager";
 import { CategoryNav } from "./components/CategoryNav";
 import { CustomTitleBar } from "./components/CustomTitleBar";
 import { NoteList } from "./components/NoteList";
+import { BoardView } from "./components/BoardView";
 import { QuickInput } from "./components/QuickInput";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { Toast, type ToastItem } from "./components/Toast";
+import { WindowResizeHandles } from "./components/WindowResizeHandles";
 import { useCategories } from "./hooks/useCategories";
 import { useNotes } from "./hooks/useNotes";
 import { useSettings } from "./hooks/useSettings";
+import { useBoard } from "./hooks/useBoard";
 import { initializeDatabase } from "./services/database";
 import { saveSettings } from "./services/settingsService";
 import {
@@ -26,11 +29,14 @@ import { startBackgroundTaskService } from "./services/backgroundTaskService";
 import { useSettingsStore } from "./stores/settingsStore";
 import type { NoteStatusFilter } from "./types/filter";
 import { filterNotes } from "./services/noteFilterService";
+import { TODO_COLUMN_ID } from "./types/board";
+import type { ViewMode } from "./types/settings";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [quickCategoryId, setQuickCategoryId] = useState<number | null>(null);
+  const [selectedBoardColumnId, setSelectedBoardColumnId] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [ready, setReady] = useState(false);
   const toastId = useRef(0);
@@ -43,6 +49,7 @@ export default function App() {
   }, []);
   const errorToast = useCallback((message: string) => toast(message, "error"), [toast]);
   const notes = useNotes(errorToast);
+  const board = useBoard(errorToast, notes.refresh);
   const categories = useCategories(errorToast, notes.refresh);
   const prefs = useSettings(errorToast);
   const win = useMemo(() => getCurrentWindow(), []);
@@ -56,8 +63,8 @@ export default function App() {
   }, [toast, win]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([notes.refresh(), categories.refresh()]);
-  }, [notes.refresh, categories.refresh]);
+    await Promise.all([notes.refresh(), categories.refresh(), board.refresh()]);
+  }, [notes.refresh, categories.refresh, board.refresh]);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,9 +83,11 @@ export default function App() {
           theme: current.theme,
           alwaysOnTop: current.alwaysOnTop
         });
-        const restoredWindow = await restoreWindowState(win, current.window);
-        const restoredSettings = { ...current, window: restoredWindow };
-        useSettingsStore.getState().patchSettings({ window: restoredWindow });
+        const savedForView = current.viewMode === "board" ? current.boardWindow : current.listWindow;
+        const restoredWindow = await restoreWindowState(win, savedForView);
+        const viewPatch = current.viewMode === "board" ? { boardWindow: restoredWindow } : { listWindow: restoredWindow };
+        const restoredSettings = { ...current, ...viewPatch, window: restoredWindow };
+        useSettingsStore.getState().patchSettings({ ...viewPatch, window: restoredWindow });
         await saveSettings(restoredSettings);
         await Promise.all([categories.refresh(), notes.refresh()]);
       } catch (error) {
@@ -131,6 +140,13 @@ export default function App() {
   }, [categories.categories, categories.loading, prefs.loaded, prefs.settings.taskCategoryFilterId, prefs.update, quickCategoryId]);
 
   useEffect(() => {
+    if (!board.columns.length) return;
+    if (!selectedBoardColumnId || !board.columns.some((column) => column.id === selectedBoardColumnId)) {
+      setSelectedBoardColumnId(board.columns.find((column) => column.id === TODO_COLUMN_ID)?.id || board.columns[0].id);
+    }
+  }, [board.columns, selectedBoardColumnId]);
+
+  useEffect(() => {
     if (!ready) return;
     let disposed = false;
     const shortcut = useSettingsStore.getState().settings.shortcut;
@@ -171,8 +187,9 @@ export default function App() {
       useSettingsStore.getState().settings.window,
       async (windowState) => {
         const current = useSettingsStore.getState().settings;
-        const next = { ...current, window: windowState };
-        useSettingsStore.getState().patchSettings({ window: windowState });
+        const viewPatch = current.viewMode === "board" ? { boardWindow: windowState } : { listWindow: windowState };
+        const next = { ...current, ...viewPatch, window: windowState };
+        useSettingsStore.getState().patchSettings({ ...viewPatch, window: windowState });
         await saveSettings(next);
       }
     );
@@ -244,33 +261,67 @@ export default function App() {
   const changeCategoryFilter = (categoryId: number | null) => {
     void prefs.update({ taskCategoryFilterId: categoryId });
   };
+  const changeViewMode = useCallback(async (viewMode: ViewMode) => {
+    const current = useSettingsStore.getState().settings;
+    if (current.viewMode === viewMode) return;
+    await windowStateManager.current?.flush();
+    const latest = useSettingsStore.getState().settings;
+    const target = viewMode === "board" ? latest.boardWindow : latest.listWindow;
+    useSettingsStore.getState().patchSettings({ viewMode });
+    try {
+      const restored = await restoreWindowState(win, target);
+      const viewPatch = viewMode === "board" ? { boardWindow: restored } : { listWindow: restored };
+      const next = { ...useSettingsStore.getState().settings, ...viewPatch, viewMode, window: restored };
+      useSettingsStore.getState().patchSettings({ ...viewPatch, viewMode, window: restored });
+      await saveSettings(next);
+    } catch (error) {
+      errorToast(error instanceof Error ? error.message : "切换视图失败");
+    }
+  }, [errorToast, win]);
   const visibleNotes = filterNotes(
     notes.notes,
     prefs.settings.taskStatusFilter,
-    prefs.settings.taskCategoryFilterId
+    prefs.settings.taskCategoryFilterId,
+    new Date(),
+    prefs.settings.taskSearch,
+    prefs.settings.taskPriorityFilter
   );
 
-  return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize} ${(settingsOpen || categoriesOpen) ? "overlay-open" : ""}`}
+  return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize} view-${prefs.settings.viewMode} ${(settingsOpen || categoriesOpen) ? "overlay-open" : ""}`}
     style={{ "--panel-opacity": String(prefs.settings.opacity / 100) } as React.CSSProperties}>
-    <section className="panel">
+    <section className={`panel ${prefs.settings.viewMode === "board" ? "board-mode" : ""}`}>
       <CustomTitleBar alwaysOnTop={prefs.settings.alwaysOnTop} onToggleTop={toggleAlwaysOnTop}
         onOpenSettings={() => { setCategoriesOpen(false); setSettingsOpen(true); }} />
       <div className="quick-area"><QuickInput categories={categories.categories} categoryId={quickCategoryId}
-        onCategoryChange={setQuickCategoryId} onAdd={notes.add} /></div>
+        onCategoryChange={setQuickCategoryId} onAdd={(input) => notes.add({ ...input,
+          boardColumnId: prefs.settings.viewMode === "board" ? selectedBoardColumnId || TODO_COLUMN_ID : input.boardColumnId
+        })} /></div>
       <CategoryNav categories={categories.categories} notes={notes.notes}
         activeStatus={prefs.settings.taskStatusFilter} categoryId={prefs.settings.taskCategoryFilterId}
         onStatusChange={changeStatusFilter} onCategoryChange={changeCategoryFilter}
+        search={prefs.settings.taskSearch} priority={prefs.settings.taskPriorityFilter} viewMode={prefs.settings.viewMode}
+        onSearchChange={(taskSearch) => void prefs.update({ taskSearch })}
+        onPriorityChange={(taskPriorityFilter) => void prefs.update({ taskPriorityFilter })}
+        onViewModeChange={(mode) => void changeViewMode(mode)}
         onManage={() => { setSettingsOpen(false); setCategoriesOpen(true); }} />
       <div className="list-area">
         {!ready ? <div className="loading-state"><span /><span /><span /></div> :
-          <div className="filtered-list" key={`${prefs.settings.taskStatusFilter}:${prefs.settings.taskCategoryFilterId ?? "all"}`}>
+          prefs.settings.viewMode === "list" ? <div className="filtered-list" key={`${prefs.settings.taskStatusFilter}:${prefs.settings.taskCategoryFilterId ?? "all"}`}>
             <NoteList notes={visibleNotes} categories={categories.categories} repeatSeries={notes.repeatSeries}
               loading={notes.loading || categories.loading}
               onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
               onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)} onEdit={notes.edit}
               onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
               onMove={notes.move} onDelete={notes.remove} />
-          </div>}
+          </div> : <BoardView columns={board.columns} notes={visibleNotes} categories={categories.categories}
+            repeatSeries={notes.repeatSeries} loading={notes.loading || categories.loading || board.loading}
+            selectedColumnId={selectedBoardColumnId} onSelectedColumnChange={setSelectedBoardColumnId}
+            onAdd={notes.add} onEdit={notes.edit}
+            onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
+            onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)}
+            onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
+            onDelete={notes.remove} onMoveNote={board.moveNote} onCreateColumn={board.create}
+            onRenameColumn={board.rename} onDeleteColumn={board.remove} onMoveColumn={board.reorder} />}
       </div>
       <footer><span>{visibleNotes.length} 项 · {notes.notes.filter((note) => !note.completed).length} 项待办</span>
         <button onClick={() => { setCategoriesOpen(false); setSettingsOpen(true); }}>个性化</button></footer>
@@ -282,5 +333,6 @@ export default function App() {
       onLaunchOnStartupChange={changeLaunchOnStartup} onShortcutChange={changeShortcut}
       onImported={refreshAll} toast={toast} />
     <Toast items={toasts} onDismiss={(id) => setToasts((items) => items.filter((item) => item.id !== id))} />
+    <WindowResizeHandles />
   </main>;
 }

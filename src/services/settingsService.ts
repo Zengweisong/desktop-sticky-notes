@@ -3,12 +3,14 @@ import {
   DEFAULT_SETTINGS,
   type AppSettings,
   type FontSizePreference,
+  type PriorityFilter,
   type ThemeName
 } from "../types/settings";
 import { isNoteStatusFilter } from "../types/filter";
 
 const THEMES = new Set<ThemeName>(["warm", "light", "dark"]);
 const FONT_SIZES = new Set<FontSizePreference>(["small", "medium", "large"]);
+const PRIORITIES = new Set<PriorityFilter>(["all", "low", "normal", "high"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -32,6 +34,26 @@ function categoryFilterId(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
+function normalizedWindow(value: unknown, fallback: AppSettings["window"], hasSaved = false): AppSettings["window"] {
+  const saved = isRecord(value) ? value : {};
+  const width = finiteNumber(saved.width, fallback.width);
+  const height = finiteNumber(saved.height, fallback.height);
+  const scaleFactor = saved.scaleFactor === null
+    ? null
+    : typeof saved.scaleFactor === "number" && Number.isFinite(saved.scaleFactor)
+      && saved.scaleFactor >= 0.5 && saved.scaleFactor <= 8
+      ? saved.scaleFactor
+      : saved.scaleFactor === undefined && hasSaved ? null : fallback.scaleFactor;
+  return {
+    x: coordinate(saved.x),
+    y: coordinate(saved.y),
+    width: width > 0 && width <= 100_000 ? Math.round(width) : fallback.width,
+    height: height > 0 && height <= 100_000 ? Math.round(height) : fallback.height,
+    maximized: booleanValue(saved.maximized, fallback.maximized),
+    scaleFactor
+  };
+}
+
 /**
  * Merges old or partially damaged settings with safe defaults. This is deliberately
  * kept independent from SQLite so it can also validate in-memory updates.
@@ -46,18 +68,9 @@ export function normalizeSettings(value: unknown): AppSettings {
       : {};
   const savedAppearance = isRecord(saved.appearance) ? saved.appearance : {};
   const opacity = finiteNumber(saved.opacity, DEFAULT_SETTINGS.opacity);
-  const width = finiteNumber(savedWindow.width, DEFAULT_SETTINGS.window.width);
-  const height = finiteNumber(savedWindow.height, DEFAULT_SETTINGS.window.height);
-  const scaleFactor = savedWindow.scaleFactor === null
-    ? null
-    : typeof savedWindow.scaleFactor === "number"
-      && Number.isFinite(savedWindow.scaleFactor)
-      && savedWindow.scaleFactor >= 0.5
-      && savedWindow.scaleFactor <= 8
-      ? savedWindow.scaleFactor
-      : savedWindow.scaleFactor === undefined
-        ? hasSavedWindow ? null : DEFAULT_SETTINGS.window.scaleFactor
-        : DEFAULT_SETTINGS.window.scaleFactor;
+  const currentWindow = normalizedWindow(savedWindow, DEFAULT_SETTINGS.window, hasSavedWindow);
+  const legacyWindowIsUsable = typeof savedWindow.width === "number" && savedWindow.width > 0
+    && typeof savedWindow.height === "number" && savedWindow.height > 0;
   const theme = THEMES.has(saved.theme as ThemeName)
     ? saved.theme as ThemeName
     : DEFAULT_SETTINGS.theme;
@@ -81,14 +94,19 @@ export function normalizeSettings(value: unknown): AppSettings {
       ? saved.taskStatusFilter
       : DEFAULT_SETTINGS.taskStatusFilter,
     taskCategoryFilterId: categoryFilterId(saved.taskCategoryFilterId),
-    window: {
-      x: coordinate(savedWindow.x),
-      y: coordinate(savedWindow.y),
-      width: width > 0 && width <= 100_000 ? Math.round(width) : DEFAULT_SETTINGS.window.width,
-      height: height > 0 && height <= 100_000 ? Math.round(height) : DEFAULT_SETTINGS.window.height,
-      maximized: booleanValue(savedWindow.maximized, DEFAULT_SETTINGS.window.maximized),
-      scaleFactor
-    }
+    taskSearch: typeof saved.taskSearch === "string" ? saved.taskSearch.slice(0, 200) : "",
+    taskPriorityFilter: PRIORITIES.has(saved.taskPriorityFilter as PriorityFilter)
+      ? saved.taskPriorityFilter as PriorityFilter : "all",
+    viewMode: saved.viewMode === "board" ? "board" : "list",
+    window: currentWindow,
+    listWindow: normalizedWindow(saved.listWindow,
+      legacyWindowIsUsable ? currentWindow : DEFAULT_SETTINGS.listWindow,
+      isRecord(saved.listWindow)),
+    boardWindow: normalizedWindow(saved.boardWindow, {
+      ...DEFAULT_SETTINGS.boardWindow,
+      x: currentWindow.x,
+      y: currentWindow.y
+    }, isRecord(saved.boardWindow))
   };
 }
 
