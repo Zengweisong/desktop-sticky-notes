@@ -12,6 +12,7 @@ interface Props {
   categories: Category[];
   isNew?: boolean;
   dragging?: boolean;
+  dragOffsetY?: number;
   dropPosition?: "before" | "after" | null;
   onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onPointerMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
@@ -22,20 +23,22 @@ interface Props {
   onToggleRepeatActive?: () => Promise<boolean>;
   onEdit: (input: NoteUpdate) => Promise<boolean>;
   onRequestDelete: () => void;
+  startEditing?: boolean;
 }
 
-export function NoteCard({ note, repeatSeries, categories, isNew, dragging, dropPosition, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
-  onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onRequestDelete }: Props) {
+export function NoteCard({ note, repeatSeries, categories, isNew, dragging, dragOffsetY = 0, dropPosition, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
+  onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onRequestDelete, startEditing = false }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
   const [title, setTitle] = useState(note.title);
   const [details, setDetails] = useState(note.details || "");
   const [categoryId, setCategoryId] = useState(note.categoryId);
   const [priority, setPriority] = useState<NotePriority>(note.priority);
-  const [dueAt, setDueAt] = useState(note.dueAt?.slice(0, 10) || "");
   const [schedule, setSchedule] = useState<NoteUpdate>(() => scheduleFrom(note, repeatSeries));
   const [overflows, setOverflows] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [reminderClock, setReminderClock] = useState(0);
+  const reminderVisible = isUpcomingReminder(note);
   const editorRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<HTMLParagraphElement>(null);
@@ -56,11 +59,21 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drop
     };
     document.addEventListener("pointerdown", outside);
     return () => document.removeEventListener("pointerdown", outside);
-  }, [editing, title, details, categoryId, priority, dueAt, schedule]);
+  }, [editing, title, details, categoryId, priority, schedule]);
+  useEffect(() => {
+    if (!reminderVisible) return;
+    const reminderTime = new Date(note.reminderAt!).getTime();
+    const delay = Math.min(Math.max(reminderTime - Date.now() + 50, 50), 2_147_483_647);
+    const timer = window.setTimeout(() => setReminderClock((value) => value + 1), delay);
+    return () => window.clearTimeout(timer);
+  }, [note.reminderAt, reminderVisible, reminderClock]);
+  useEffect(() => {
+    if (!reminderVisible && !repeatSeries && !overflows) setExpanded(false);
+  }, [reminderVisible, repeatSeries, overflows]);
 
   const resetDraft = () => {
     setTitle(note.title); setDetails(note.details || ""); setCategoryId(note.categoryId);
-    setPriority(note.priority); setDueAt(note.dueAt?.slice(0, 10) || "");
+    setPriority(note.priority);
     setSchedule(scheduleFrom(note, repeatSeries));
   };
   const startEdit = () => { resetDraft(); setEditing(true); };
@@ -68,7 +81,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drop
     if (!editing || busy || composing.current) return;
     if (!title.trim()) { titleRef.current?.focus(); return; }
     setBusy(true);
-    if (await onEdit({ ...schedule, title, details, categoryId, priority, dueAt: dueAt || null })) setEditing(false);
+    if (await onEdit({ ...schedule, title, details, categoryId, priority })) setEditing(false);
     setBusy(false);
   };
   const cancel = () => { resetDraft(); setEditing(false); };
@@ -82,7 +95,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drop
   const category = categories.find((item) => item.id === note.categoryId);
 
   return <article className={`note-card ${note.completed ? "completed" : ""} ${isNew ? "note-enter" : ""} ${dragging ? "dragging" : ""} ${dropPosition ? `drop-${dropPosition}` : ""}`}
-    data-note-id={note.id}>
+    data-note-id={note.id} style={{ "--drag-offset-y": `${dragOffsetY}px` } as React.CSSProperties}>
     <button className="drag-handle" disabled={editing || busy} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} aria-label="拖动调整顺序" title="拖动调整顺序"><GripVertical size={14} /></button>
     <button className={`check-button ${note.completed ? "checked" : ""}`} disabled={busy}
@@ -97,6 +110,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drop
         <textarea value={details} rows={2} disabled={busy} placeholder="详细备注（可选）"
           onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
           onChange={(event) => setDetails(event.target.value)} onKeyDown={handleEditorKey} />
+        <div className="edit-section-title">分类与优先级</div>
         <div className="note-edit-fields">
           <select value={categoryId ?? ""} onChange={(event) => setCategoryId(Number(event.target.value))} aria-label="所属类别">
             {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -104,7 +118,6 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drop
           <select value={priority} onChange={(event) => setPriority(event.target.value as NotePriority)} aria-label="优先级">
             <option value="low">低优先级</option><option value="normal">普通</option><option value="high">高优先级</option>
           </select>
-          <input type="date" value={dueAt} onChange={(event) => setDueAt(event.target.value)} aria-label="截止日期" />
         </div>
         {repeatSeries && <label className="repeat-edit-scope"><span>编辑范围</span><select
           value={schedule.repeatEditScope || "occurrence"}
@@ -116,17 +129,17 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drop
       </div> : <>
         <p ref={contentRef} className={expanded ? "expanded" : "clamped"}>{note.title}</p>
         {note.details && <p ref={detailsRef} className={`note-details ${expanded ? "" : "details-clamped"}`}>{note.details}</p>}
-        {(overflows || expanded || note.scheduledAt || repeatSeries) && <button className="expand-button" onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "查看详情"}</button>}
+        {(overflows || expanded || reminderVisible || repeatSeries) && <button className="expand-button" onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "查看详情"}</button>}
         <div className="note-meta">
           {category && <span className="category-badge" title={category.name}><i style={{ backgroundColor: category.color }} />{category.name}</span>}
           {note.priority !== "normal" && <span className={`priority-badge ${note.priority}`}>{note.priority === "high" ? "高优先级" : "低优先级"}</span>}
-          {note.dueAt && <span className={`due-badge ${isOverdue(note) ? "overdue" : ""}`}><Calendar size={11} />{formatDueDate(note.dueAt)}</span>}
+          {note.scheduledAt && <span className={`due-badge ${isPlanPast(note) ? "overdue" : ""}`}><Calendar size={11} />{formatPlanTime(note)}</span>}
           {repeatSeries && <span className="repeat-badge"><Repeat2 size={11} />{describeRepeat(repeatSeries)}</span>}
-          {note.reminderEnabled && note.reminderAt && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
+          {reminderVisible && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
         </div>
-        {expanded && <div className="note-schedule-details">
-          <div><b>事项时间</b><span>{note.scheduledAt ? formatFullDateTime(note.scheduledAt) : "未设置"}</span></div>
-          <div><b>提醒设置</b><span>{note.reminderEnabled ? formatReminder(note, Boolean(repeatSeries)) : "关闭"}</span></div>
+        {expanded && (reminderVisible || repeatSeries) && <div className="note-schedule-details">
+          <div><b>事项时间</b><span>{note.scheduledAt ? formatPlanTime(note) : "未设置"}</span></div>
+          {reminderVisible && <div><b>提醒</b><span>{formatReminder(note, Boolean(repeatSeries))}</span></div>}
           <div><b>重复规则</b><span>{repeatSeries ? `${describeRepeat(repeatSeries)} · ${repeatSeries.active ? "进行中" : "已暂停"}` : "不重复"}</span></div>
           {repeatSeries && onToggleRepeatActive && <button className="repeat-pause-button" disabled={busy}
             onClick={() => void toggle(onToggleRepeatActive)}>{repeatSeries.active ? "暂停后续生成" : "恢复后续生成"}</button>}
@@ -142,15 +155,15 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drop
   </article>;
 }
 
-function formatDueDate(value: string) {
-  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
+function isPlanPast(note: Note) {
+  if (note.completed || !note.scheduledAt) return false;
+  return new Date(note.scheduledAt).getTime() < Date.now();
 }
 
-function isOverdue(note: Note) {
-  if (note.completed || !note.dueAt) return false;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return new Date(`${note.dueAt.slice(0, 10)}T00:00:00`) < today;
+export function isUpcomingReminder(note: Note, now = Date.now()) {
+  if (!note.reminderEnabled || !note.reminderAt || note.reminderTriggeredAt) return false;
+  const reminderTime = new Date(note.reminderAt).getTime();
+  return Number.isFinite(reminderTime) && reminderTime > now;
 }
 
 function scheduleFrom(note: Note, series?: RepeatSeries): NoteUpdate {
@@ -159,6 +172,7 @@ function scheduleFrom(note: Note, series?: RepeatSeries): NoteUpdate {
     scheduledAt: note.scheduledAt,
     reminderEnabled: note.reminderEnabled,
     reminderOffsetMinutes: note.reminderOffsetMinutes,
+    legacyReminderAt: isLegacyReminder(note) ? note.reminderAt : null,
     repeatEnabled: Boolean(series),
     repeatType: series?.repeatType || "daily",
     repeatInterval: series?.repeatInterval || 1,
@@ -179,6 +193,19 @@ function formatReminder(note: Note, recurring: boolean) {
     return `提前 ${note.reminderOffsetMinutes} 分钟`;
   }
   return formatFullDateTime(note.reminderAt!);
+}
+
+function isLegacyReminder(note: Note) {
+  if (!note.reminderEnabled || !note.reminderAt) return false;
+  if (!note.scheduledAt) return true;
+  const plan = new Date(note.scheduledAt);
+  const expected = plan.getTime() - note.reminderOffsetMinutes * 60_000;
+  return Math.abs(expected - new Date(note.reminderAt).getTime()) > 60_000;
+}
+
+function formatPlanTime(note: Note) {
+  if (!note.scheduledAt) return "未设置";
+  return formatFullDateTime(note.scheduledAt);
 }
 
 function formatFullDateTime(value: string) {

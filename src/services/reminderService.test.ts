@@ -11,4 +11,10 @@ describe("ReminderService", () => {
   it("returns no reminder when no item time exists", () => {
     expect(ReminderService.calculateReminderAt(null, 30)).toBeNull();
   });
+
+  it("derives reminderAt only from scheduledAt and the offset", () => {
+    const scheduledAt = new Date(2026, 6, 17, 12, 55, 0, 0);
+    const reminderAt = new Date(ReminderService.calculateReminderAt(scheduledAt.toISOString(), 10)!);
+    expect([reminderAt.getHours(), reminderAt.getMinutes()]).toEqual([12, 45]);
+  });
 });

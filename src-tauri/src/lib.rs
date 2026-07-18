@@ -346,6 +346,11 @@ fn set_background_visible(app: tauri::AppHandle, visible: bool) {
     let _ = (app, visible);
 }
 
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[cfg(windows)]
 #[tauri::command]
 fn show_reminder_notification(
@@ -509,6 +514,77 @@ fn migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "separate plan time and all-day reminder metadata",
+            sql: r#"
+                ALTER TABLE notes ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0
+                  CHECK (is_all_day IN (0, 1));
+                ALTER TABLE notes ADD COLUMN all_day_reminder_time TEXT NULL;
+                ALTER TABLE repeat_series ADD COLUMN default_is_all_day INTEGER NOT NULL DEFAULT 0
+                  CHECK (default_is_all_day IN (0, 1));
+                ALTER TABLE repeat_series ADD COLUMN default_all_day_reminder_time TEXT NULL;
+
+                -- The old top-level due date becomes an all-day plan when no more
+                -- precise scheduled time exists. Keep due_at itself for rollback/export compatibility.
+                UPDATE notes
+                  SET scheduled_at = due_at || 'T00:00:00', is_all_day = 1
+                  WHERE scheduled_at IS NULL AND due_at IS NOT NULL AND length(due_at) >= 10;
+
+                -- Recover the offset from old independent reminder timestamps whenever possible.
+                -- reminder_at is intentionally never cleared: unconvertible legacy reminders remain active.
+                UPDATE notes
+                  SET reminder_offset_minutes = CAST(ROUND(
+                    (julianday(scheduled_at) - julianday(reminder_at)) * 1440
+                  ) AS INTEGER)
+                  WHERE scheduled_at IS NOT NULL AND reminder_at IS NOT NULL
+                    AND julianday(scheduled_at) >= julianday(reminder_at);
+
+                UPDATE notes
+                  SET all_day_reminder_time = COALESCE(strftime('%H:%M', reminder_at, 'localtime'), '09:00')
+                  WHERE is_all_day = 1 AND reminder_enabled = 1;
+            "#,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "add persistent board columns and note placement",
+            sql: r#"
+                CREATE TABLE IF NOT EXISTS board_columns (
+                    id TEXT PRIMARY KEY NOT NULL,
+                    name TEXT NOT NULL,
+                    sort_order INTEGER NOT NULL DEFAULT 0,
+                    type TEXT NOT NULL DEFAULT 'custom'
+                      CHECK (type IN ('system', 'custom')),
+                    status TEXT NOT NULL DEFAULT 'doing'
+                      CHECK (status IN ('todo', 'doing', 'completed')),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                INSERT OR IGNORE INTO board_columns
+                  (id, name, sort_order, type, status, created_at, updated_at) VALUES
+                  ('todo', '待处理', 10, 'system', 'todo', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                  ('doing', '进行中', 20, 'custom', 'doing', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                  ('completed', '已完成', 30, 'system', 'completed', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+                ALTER TABLE notes ADD COLUMN board_column_id TEXT NULL
+                  REFERENCES board_columns(id) ON DELETE RESTRICT;
+                ALTER TABLE notes ADD COLUMN board_order INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE notes ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'
+                  CHECK (status IN ('todo', 'doing', 'completed'));
+                ALTER TABLE notes ADD COLUMN previous_board_column_id TEXT NULL
+                  REFERENCES board_columns(id) ON DELETE SET NULL;
+
+                UPDATE notes
+                  SET board_column_id = CASE WHEN completed = 1 THEN 'completed' ELSE 'todo' END,
+                      status = CASE WHEN completed = 1 THEN 'completed' ELSE 'todo' END,
+                      board_order = sort_order;
+                CREATE INDEX IF NOT EXISTS idx_notes_board_order
+                  ON notes(board_column_id, board_order, created_at);
+            "#,
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -572,7 +648,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 show_window(app);
                 emit_action(app, "settings");
             }
-            "quit" => app.exit(0),
+            "quit" => emit_action(app, "quit"),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -616,6 +692,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             set_background_appearance,
             set_background_visible,
+            quit_app,
             show_reminder_notification
         ])
         .setup(|app| {

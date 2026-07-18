@@ -1,4 +1,5 @@
 export type NotePriority = "low" | "normal" | "high";
+import type { BoardStatus } from "./board";
 
 export interface Note {
   id: number;
@@ -13,6 +14,7 @@ export interface Note {
   completedAt: string | null;
   dueAt: string | null;
   sortOrder: number;
+  /** 唯一的事项时间。数据库字段为 scheduled_at。 */
   scheduledAt: string | null;
   repeatSeriesId: number | null;
   repeatOccurrenceAt: string | null;
@@ -20,6 +22,10 @@ export interface Note {
   reminderAt: string | null;
   reminderOffsetMinutes: number;
   reminderTriggeredAt: string | null;
+  boardColumnId: string;
+  boardOrder: number;
+  status: BoardStatus;
+  previousBoardColumnId: string | null;
 }
 
 export interface NoteRow {
@@ -43,6 +49,10 @@ export interface NoteRow {
   reminder_at: string | null;
   reminder_offset_minutes: number;
   reminder_triggered_at: string | null;
+  board_column_id?: string | null;
+  board_order?: number | null;
+  status?: BoardStatus | null;
+  previous_board_column_id?: string | null;
 }
 
 export interface NoteInput {
@@ -50,8 +60,12 @@ export interface NoteInput {
   details?: string | null;
   categoryId?: number | null;
   priority?: NotePriority;
-  dueAt?: string | null;
   scheduledAt?: string | null;
+  /** 仅供编辑旧版无法换算为提前量的提醒，保存时保持其原始时间。 */
+  legacyReminderAt?: string | null;
+  /** 事项时间控件的临时草稿，不直接持久化。 */
+  planDate?: string;
+  planTime?: string;
   reminderEnabled?: boolean;
   reminderOffsetMinutes?: number;
   repeatEnabled?: boolean;
@@ -63,6 +77,7 @@ export interface NoteInput {
   repeatEndDate?: string | null;
   repeatMaxOccurrences?: number | null;
   repeatEditScope?: "occurrence" | "series";
+  boardColumnId?: string;
 }
 
 export interface NoteUpdate extends NoteInput {}

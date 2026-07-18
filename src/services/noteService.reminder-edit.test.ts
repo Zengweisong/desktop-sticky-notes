@@ -14,7 +14,7 @@ vi.mock("./reminderService", () => ({
   }
 }));
 
-import { updateNote } from "./noteService";
+import { createNote, updateNote } from "./noteService";
 import { ReminderService } from "./reminderService";
 
 describe("editing a reminder through the pooled Tauri database", () => {
@@ -49,10 +49,10 @@ describe("editing a reminder through the pooled Tauri database", () => {
       reminderOffsetMinutes: 60
     }));
     const updateCall = db.execute.mock.calls.find(([sql]) => sql.includes("UPDATE notes SET content"));
+    expect(updateCall?.[0]).not.toMatch(/due_at|is_all_day|all_day_reminder_time/);
     expect(updateCall?.[1]).toEqual([
-      "提交周报", "发送给团队", 1, "normal", null,
-      "2026-07-20T08:00:00.000Z", 1, "2026-07-20T07:00:00.000Z",
-      60, "series", expect.any(String), 7
+      "提交周报", "发送给团队", 1, "normal", "2026-07-20T08:00:00.000Z",
+      1, "2026-07-20T07:00:00.000Z", 60, "series", expect.any(String), 7
     ]);
   });
 
@@ -71,10 +71,34 @@ describe("editing a reminder through the pooled Tauri database", () => {
     expect(ReminderService.updateReminder).not.toHaveBeenCalled();
     const updateCall = db.execute.mock.calls.find(([sql]) => sql.includes("UPDATE notes SET content"));
     expect(updateCall?.[1]).toEqual([
-      "提交周报", null, 1, "normal", null,
-      "2026-07-20T08:00:00.000Z", 0, null,
-      60, "series", expect.any(String), 7
+      "提交周报", null, 1, "normal", "2026-07-20T08:00:00.000Z",
+      0, null, 60, "series", expect.any(String), 7
     ]);
+  });
+});
+
+describe("creating with the unified item time", () => {
+  it("writes scheduled_at but no legacy date or second reminder target", async () => {
+    vi.clearAllMocks();
+    db.select.mockReset();
+    db.execute.mockReset();
+    db.select
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockResolvedValueOnce([{ next_order: 10 }])
+      .mockResolvedValueOnce([{ ...existingNoteRow(), scheduled_at: "2026-07-20T08:00:00.000Z" }]);
+    db.execute.mockResolvedValue({ rowsAffected: 1, lastInsertId: 8 });
+
+    await createNote({
+      title: "统一时间",
+      categoryId: 1,
+      scheduledAt: "2026-07-20T08:00:00.000Z",
+      reminderEnabled: true,
+      reminderOffsetMinutes: 60
+    });
+
+    const insertCall = db.execute.mock.calls.find(([sql]) => sql.includes("INSERT INTO notes"));
+    expect(insertCall?.[0]).toContain("scheduled_at");
+    expect(insertCall?.[0]).not.toMatch(/due_at|is_all_day|all_day_reminder_time|reminder_target|reminder_datetime/i);
   });
 });
 
@@ -99,6 +123,8 @@ function existingNoteRow() {
     reminder_enabled: 0,
     reminder_at: null,
     reminder_offset_minutes: 0,
-    reminder_triggered_at: null
+    reminder_triggered_at: null,
+    is_all_day: 0,
+    all_day_reminder_time: null
   };
 }

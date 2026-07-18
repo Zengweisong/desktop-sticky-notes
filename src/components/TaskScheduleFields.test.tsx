@@ -7,39 +7,76 @@ import { TaskScheduleFields } from "./TaskScheduleFields";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("TaskScheduleFields independence", () => {
+describe("TaskScheduleFields product rules", () => {
   let container: HTMLDivElement | null = null;
 
   afterEach(() => { container?.remove(); container = null; });
 
-  it("enables reminders without enabling repeat", async () => {
+  it("does not enable reminders before an item time exists", async () => {
     const root = await render();
-    const toggles = container!.querySelectorAll<HTMLInputElement>('.inline-toggle input[type="checkbox"]');
-    await act(async () => toggles[0].click());
-    expect(toggles[0].checked).toBe(true);
-    expect(toggles[1].checked).toBe(false);
-    expect(container!.textContent).toContain("提前提醒时间");
+    const reminder = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    await act(async () => reminder.click());
+    expect(reminder.getAttribute("aria-checked")).toBe("false");
+    expect(container!.textContent).toContain("请先设置事项时间");
+    await act(async () => root.unmount());
+  });
+
+  it("enables a default ten-minute reminder independently from repeat", async () => {
+    const root = await render({ scheduledAt: futurePlan() });
+    const reminder = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    await act(async () => reminder.click());
+    expect(reminder.getAttribute("aria-checked")).toBe("true");
+    expect(container!.querySelector<HTMLSelectElement>('select[aria-label="提醒方式"]')!.value).toBe("10");
+    expect(container!.querySelector<HTMLSelectElement>('.schedule-control-row select')!.value).toBe("none");
     await act(async () => root.unmount());
   });
 
   it("enables repeat without enabling reminders", async () => {
-    const root = await render();
-    const toggles = container!.querySelectorAll<HTMLInputElement>('.inline-toggle input[type="checkbox"]');
-    await act(async () => toggles[1].click());
-    expect(toggles[0].checked).toBe(false);
-    expect(toggles[1].checked).toBe(true);
-    expect(container!.textContent).toContain("重复规则");
+    const root = await render({ scheduledAt: futurePlan() });
+    const repeat = container!.querySelector<HTMLSelectElement>('.schedule-control-row select')!;
+    await act(async () => { repeat.value = "daily"; repeat.dispatchEvent(new Event("change", { bubbles: true })); });
+    expect(repeat.value).toBe("daily");
+    expect(container!.querySelector<HTMLButtonElement>('[role="switch"]')!.getAttribute("aria-checked")).toBe("false");
     await act(async () => root.unmount());
   });
 
-  async function render() {
+  it("renders exactly one editable date and time even when reminder is enabled", async () => {
+    const root = await render({ scheduledAt: futurePlan(), reminderEnabled: true });
+    expect(container!.querySelectorAll('input[type="date"]')).toHaveLength(1);
+    expect(container!.querySelectorAll('input[type="time"]')).toHaveLength(1);
+    expect(container!.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(container!.querySelector('.reminder-block input[type="date"], .reminder-block input[type="time"]')).toBeNull();
+    expect(container!.textContent).toContain("将在");
+    await act(async () => root.unmount());
+  });
+
+  it("keeps reminder details collapsed until the compact primary switch is enabled", async () => {
+    const root = await render({ scheduledAt: futurePlan() }, true);
+    expect(container!.querySelector(".schedule-primary-row")).not.toBeNull();
+    expect(container!.querySelector(".reminder-details-block")).toBeNull();
+    const reminder = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    await act(async () => reminder.click());
+    expect(container!.querySelector(".reminder-details-block")).not.toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  async function render(patch: Partial<NoteInput> = {}, withPriority = false) {
     container = document.createElement("div"); document.body.append(container);
     const root = createRoot(container);
     function Harness() {
-      const [value, setValue] = useState<NoteInput>({ title: "测试", reminderEnabled: false, repeatEnabled: false });
-      return <TaskScheduleFields value={value} onChange={(patch) => setValue((current) => ({ ...current, ...patch }))} />;
+      const [value, setValue] = useState<NoteInput>({
+        title: "测试", reminderEnabled: false, reminderOffsetMinutes: 10, repeatEnabled: false, ...patch
+      });
+      return <TaskScheduleFields value={value} onChange={(next) => setValue((current) => ({ ...current, ...next }))}
+        priority={withPriority ? "normal" : undefined} onPriorityChange={withPriority ? () => undefined : undefined} />;
     }
     await act(async () => root.render(<Harness />));
     return root;
   }
 });
+
+function futurePlan() {
+  const date = new Date(Date.now() + 7 * 86_400_000);
+  date.setHours(18, 0, 0, 0);
+  return date.toISOString();
+}

@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { Download, Keyboard, Moon, Sun, Trash2, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, Keyboard, Moon, Sun, Trash2, Type, Upload, X } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import type { AppSettings, ThemeName } from "../types/settings";
+import type { AppSettings, FontSizePreference, ThemeName } from "../types/settings";
 import { exportNotes, importNotes } from "../services/noteService";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { OpacitySlider } from "./OpacitySlider";
@@ -19,12 +19,30 @@ const themes: Array<{ value: ThemeName; label: string; icon: typeof Sun }> = [
   { value: "light", label: "浅色玻璃", icon: Sun },
   { value: "dark", label: "深色玻璃", icon: Moon }
 ];
+const fontSizes: Array<{ value: FontSizePreference; label: string }> = [
+  { value: "small", label: "小" },
+  { value: "medium", label: "中" },
+  { value: "large", label: "大" }
+];
 
 export function SettingsDrawer(props: Props) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const [shortcutBusy, setShortcutBusy] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!props.open) return;
+    closeButtonRef.current?.focus({ preventScroll: true });
+  }, [props.open]);
+
+  useEffect(() => {
+    if (!props.open) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") props.onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [props.open, props.onClose]);
 
   const exportData = async () => {
     if (fileBusy) return; setFileBusy(true);
@@ -50,10 +68,20 @@ export function SettingsDrawer(props: Props) {
 
   return <>
     <div className={`drawer-backdrop ${props.open ? "visible" : ""}`} onClick={props.onClose} />
-    <aside className={`settings-drawer ${props.open ? "open" : ""}`} aria-hidden={!props.open}>
-      <div className="drawer-header"><div><h2>设置</h2><p>让便签更适合你的桌面</p></div><button onClick={props.onClose}><X size={18} /></button></div>
+    <aside className={`settings-drawer ${props.open ? "open" : ""}`} aria-hidden={!props.open}
+      role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div className="drawer-header"><div><h2 id="settings-title">设置</h2><p>让便签更适合你的桌面</p></div><button ref={closeButtonRef} type="button" aria-label="关闭设置" onClick={props.onClose}><X size={18} /></button></div>
       <div className="drawer-content">
         <OpacitySlider value={props.settings.opacity} onChange={(opacity) => void props.onUpdate({ opacity })} />
+        <div className="setting-block">
+          <div className="setting-heading"><span className="setting-heading-label"><Type size={16} />字体大小</span></div>
+          <div className="font-size-options" role="radiogroup" aria-label="字体大小">
+            {fontSizes.map(({ value, label }) => <button key={value} type="button" role="radio"
+              aria-checked={props.settings.fontSize === value}
+              className={props.settings.fontSize === value ? "selected" : ""}
+              onClick={() => void props.onUpdate({ fontSize: value })}>{label}</button>)}
+          </div>
+        </div>
         <div className="setting-block"><div className="setting-heading"><span>主题</span></div>
           <div className="theme-options">{themes.map(({ value, label, icon: Icon }) => <button key={value}
             className={`theme-option theme-${value} ${props.settings.theme === value ? "selected" : ""}`}
