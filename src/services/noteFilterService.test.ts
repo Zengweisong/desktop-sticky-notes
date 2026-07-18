@@ -1,30 +1,33 @@
 import { describe, expect, it } from "vitest";
 import type { Note } from "../types/note";
-import { countNotesByStatus, filterNotes } from "./noteFilterService";
+import { filterNotes } from "./noteFilterService";
 
 describe("noteFilterService", () => {
   const today = new Date(2026, 6, 17, 12, 0);
   const todayAt = new Date(2026, 6, 17, 9, 0).toISOString();
   const tomorrowAt = new Date(2026, 6, 18, 9, 0).toISOString();
+  const yesterdayAt = new Date(2026, 6, 16, 9, 0).toISOString();
   const notes = [
     makeNote(1, 1, false, { scheduledAt: todayAt }),
     makeNote(2, 1, false, { dueAt: todayAt }),
     makeNote(3, 1, false, { reminderAt: todayAt }),
     makeNote(4, 1, true, { scheduledAt: todayAt }),
     makeNote(5, 2, false, { scheduledAt: todayAt }),
-    makeNote(6, 1, false, { scheduledAt: tomorrowAt })
+    makeNote(6, 1, false, { scheduledAt: tomorrowAt }),
+    makeNote(7, 1, false, { dueAt: yesterdayAt }),
+    makeNote(8, 1, false, {})
   ];
 
-  it("combines the status and category filters", () => {
-    expect(filterNotes(notes, "active", 1, today).map(({ id }) => id)).toEqual([1, 2, 3, 6]);
-    expect(filterNotes(notes, "today", 1, today).map(({ id }) => id)).toEqual([1, 2, 3]);
-    expect(filterNotes(notes, "completed", 1, today).map(({ id }) => id)).toEqual([4]);
-    expect(filterNotes(notes, "today", null, today).map(({ id }) => id)).toEqual([1, 2, 3, 5]);
+  it("combines time and category filters without changing completion visibility", () => {
+    expect(filterNotes(notes, "all", 1, today).map(({ id }) => id)).toEqual([1, 2, 3, 4, 6, 7, 8]);
+    expect(filterNotes(notes, "today", 1, today).map(({ id }) => id)).toEqual([1, 2, 3, 4]);
+    expect(filterNotes(notes, "today", null, today).map(({ id }) => id)).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it("calculates all tab counts within the active category", () => {
-    expect(countNotesByStatus(notes, 1, today)).toEqual({ active: 4, today: 3, completed: 1 });
-    expect(countNotesByStatus(notes, 2, today)).toEqual({ active: 1, today: 1, completed: 0 });
+  it("supports overdue, future, and undated ranges", () => {
+    expect(filterNotes(notes, "overdue", 1, today).map(({ id }) => id)).toEqual([7]);
+    expect(filterNotes(notes, "future", 1, today).map(({ id }) => id)).toEqual([6]);
+    expect(filterNotes(notes, "undated", 1, today).map(({ id }) => id)).toEqual([8]);
   });
 });
 

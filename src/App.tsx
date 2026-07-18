@@ -27,7 +27,7 @@ import {
 } from "./services/windowStateManager";
 import { startBackgroundTaskService } from "./services/backgroundTaskService";
 import { useSettingsStore } from "./stores/settingsStore";
-import type { NoteStatusFilter } from "./types/filter";
+import type { NoteTimeFilter } from "./types/filter";
 import { filterNotes } from "./services/noteFilterService";
 import { TODO_COLUMN_ID } from "./types/board";
 import type { ViewMode } from "./types/settings";
@@ -116,7 +116,7 @@ export default function App() {
   useEffect(() => {
     const focusNote = (event: Event) => {
       const id = (event as CustomEvent<number>).detail;
-      void prefs.update({ taskStatusFilter: "active", taskCategoryFilterId: null });
+      void prefs.update({ taskTimeFilter: "all", taskCategoryFilterId: null, taskSearch: "", taskPriorityFilter: "all" });
       void notes.refresh().then(() => window.setTimeout(() => {
         const card = document.querySelector<HTMLElement>(`[data-note-id="${id}"]`);
         card?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -255,8 +255,8 @@ export default function App() {
       errorToast("快捷键无效或已被其他程序占用"); return false;
     }
   }, [errorToast, focusQuickInput, prefs.update, toast]);
-  const changeStatusFilter = (next: NoteStatusFilter) => {
-    void prefs.update({ taskStatusFilter: next });
+  const changeTimeFilter = (next: NoteTimeFilter) => {
+    void prefs.update({ taskTimeFilter: next });
   };
   const changeCategoryFilter = (categoryId: number | null) => {
     void prefs.update({ taskCategoryFilterId: categoryId });
@@ -280,12 +280,17 @@ export default function App() {
   }, [errorToast, win]);
   const visibleNotes = filterNotes(
     notes.notes,
-    prefs.settings.taskStatusFilter,
+    prefs.settings.taskTimeFilter,
     prefs.settings.taskCategoryFilterId,
     new Date(),
     prefs.settings.taskSearch,
     prefs.settings.taskPriorityFilter
   );
+  const activeTotal = notes.notes.filter((note) => !note.completed).length;
+  const completedTotal = notes.notes.length - activeTotal;
+  const filtersActive = prefs.settings.taskTimeFilter !== "all" || prefs.settings.taskCategoryFilterId != null
+    || Boolean(prefs.settings.taskSearch) || prefs.settings.taskPriorityFilter !== "all";
+  const visibleListCount = visibleNotes.filter((note) => !note.completed || prefs.settings.showCompleted).length;
 
   return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize} view-${prefs.settings.viewMode} ${(settingsOpen || categoriesOpen) ? "overlay-open" : ""}`}
     style={{ "--panel-opacity": String(prefs.settings.opacity / 100) } as React.CSSProperties}>
@@ -296,19 +301,22 @@ export default function App() {
         onCategoryChange={setQuickCategoryId} onAdd={(input) => notes.add({ ...input,
           boardColumnId: prefs.settings.viewMode === "board" ? selectedBoardColumnId || TODO_COLUMN_ID : input.boardColumnId
         })} /></div>
-      <CategoryNav categories={categories.categories} notes={notes.notes}
-        activeStatus={prefs.settings.taskStatusFilter} categoryId={prefs.settings.taskCategoryFilterId}
-        onStatusChange={changeStatusFilter} onCategoryChange={changeCategoryFilter}
-        search={prefs.settings.taskSearch} priority={prefs.settings.taskPriorityFilter} viewMode={prefs.settings.viewMode}
-        onSearchChange={(taskSearch) => void prefs.update({ taskSearch })}
-        onPriorityChange={(taskPriorityFilter) => void prefs.update({ taskPriorityFilter })}
-        onViewModeChange={(mode) => void changeViewMode(mode)}
-        onManage={() => { setSettingsOpen(false); setCategoriesOpen(true); }} />
       <div className="list-area">
-        {!ready ? <div className="loading-state"><span /><span /><span /></div> :
-          prefs.settings.viewMode === "list" ? <div className="filtered-list" key={`${prefs.settings.taskStatusFilter}:${prefs.settings.taskCategoryFilterId ?? "all"}`}>
+        <CategoryNav categories={categories.categories} timeFilter={prefs.settings.taskTimeFilter}
+          categoryId={prefs.settings.taskCategoryFilterId} onTimeFilterChange={changeTimeFilter}
+          onCategoryChange={changeCategoryFilter} search={prefs.settings.taskSearch}
+          priority={prefs.settings.taskPriorityFilter} viewMode={prefs.settings.viewMode}
+          onSearchChange={(taskSearch) => void prefs.update({ taskSearch })}
+          onPriorityChange={(taskPriorityFilter) => void prefs.update({ taskPriorityFilter })}
+          onViewModeChange={(mode) => void changeViewMode(mode)}
+          onManage={() => { setSettingsOpen(false); setCategoriesOpen(true); }} />
+        <div className="content-viewport">
+          {!ready ? <div className="loading-state"><span /><span /><span /></div> :
+          prefs.settings.viewMode === "list" ? <div className="filtered-list" key={`${prefs.settings.taskTimeFilter}:${prefs.settings.taskCategoryFilterId ?? "all"}`}>
             <NoteList notes={visibleNotes} categories={categories.categories} repeatSeries={notes.repeatSeries}
               loading={notes.loading || categories.loading}
+              showCompleted={prefs.settings.showCompleted} completedExpanded={prefs.settings.completedSectionExpanded}
+              onCompletedExpandedChange={(completedSectionExpanded) => void prefs.update({ completedSectionExpanded })}
               onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
               onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)} onEdit={notes.edit}
               onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
@@ -322,8 +330,11 @@ export default function App() {
             onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
             onDelete={notes.remove} onMoveNote={board.moveNote} onCreateColumn={board.create}
             onRenameColumn={board.rename} onDeleteColumn={board.remove} onMoveColumn={board.reorder} />}
+        </div>
       </div>
-      <footer><span>{visibleNotes.length} 项 · {notes.notes.filter((note) => !note.completed).length} 项待办</span>
+      <footer><span>{filtersActive
+        ? `显示 ${prefs.settings.viewMode === "board" ? visibleNotes.length : visibleListCount} 项 · 共 ${prefs.settings.viewMode === "board" ? notes.notes.length : activeTotal + (prefs.settings.showCompleted ? completedTotal : 0)} 项`
+        : `${activeTotal} 项待办 · ${completedTotal} 项已完成`}</span>
         <button onClick={() => { setCategoriesOpen(false); setSettingsOpen(true); }}>个性化</button></footer>
     </section>
     <CategoryManager open={categoriesOpen} categories={categories.categories} onClose={() => setCategoriesOpen(false)}
