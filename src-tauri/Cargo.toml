@@ -1,6 +1,6 @@
 [package]
 name = "desktop-sticky-notes"
-version = "0.4.0"
+version = "0.4.1"
 description = "轻量的桌面便签和待办事项工具"
 authors = ["Desktop Sticky Notes"]
 edition = "2021"
