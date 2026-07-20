@@ -235,11 +235,20 @@ function PickerInput({ type, value, placeholder, icon, disabled, onChange }: {
   type: "date" | "time"; value: string; placeholder: string; icon: "date" | "time";
   disabled?: boolean; onChange: (value: string) => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const text = value ? (type === "date" ? formatLocalDate(value) : value) : placeholder;
-  return <label className={`picker-input ${disabled ? "disabled" : ""}`}>
+  return <label className={`picker-input ${disabled ? "disabled" : ""}`} onClick={(event) => {
+    const input = inputRef.current;
+    if (!input || disabled || typeof input.showPicker !== "function") return;
+    try {
+      input.showPicker();
+      event.preventDefault();
+    }
+    catch { input.focus(); }
+  }}>
     {icon === "date" ? <CalendarDays size={13} /> : <Clock3 size={13} />}
     <span className={value ? "" : "placeholder"}>{text}</span>
-    <input type={type} value={value} disabled={disabled} step={type === "time" ? 60 : undefined}
+    <input ref={inputRef} type={type} value={value} disabled={disabled} step={type === "time" ? 60 : undefined}
       aria-label={placeholder} onChange={(event) => onChange(event.target.value)} />
   </label>;
 }

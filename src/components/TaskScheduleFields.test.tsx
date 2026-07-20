@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NoteInput } from "../types/note";
 import { TaskScheduleFields } from "./TaskScheduleFields";
 
@@ -48,6 +48,40 @@ describe("TaskScheduleFields product rules", () => {
     expect(container!.querySelector('.reminder-block input[type="date"], .reminder-block input[type="time"]')).toBeNull();
     expect(container!.textContent).toContain("将在");
     await act(async () => root.unmount());
+  });
+
+  it("opens the native picker from the full custom date and time controls", async () => {
+    const showPicker = vi.fn();
+    const originalShowPicker = HTMLInputElement.prototype.showPicker;
+    Object.defineProperty(HTMLInputElement.prototype, "showPicker", {
+      configurable: true,
+      value: showPicker
+    });
+
+    try {
+      const root = await render();
+      const date = container!.querySelector<HTMLInputElement>('input[type="date"]')!;
+      const time = container!.querySelector<HTMLInputElement>('input[type="time"]')!;
+
+      await act(async () => date.closest<HTMLLabelElement>(".picker-input")!.click());
+      expect(showPicker).toHaveBeenCalledTimes(1);
+      expect(showPicker.mock.instances[0]).toBe(date);
+
+      await act(async () => time.closest<HTMLLabelElement>(".picker-input")!.click());
+      expect(showPicker).toHaveBeenCalledTimes(2);
+      expect(showPicker.mock.instances[1]).toBe(time);
+
+      await act(async () => root.unmount());
+    } finally {
+      if (originalShowPicker) {
+        Object.defineProperty(HTMLInputElement.prototype, "showPicker", {
+          configurable: true,
+          value: originalShowPicker
+        });
+      } else {
+        delete (HTMLInputElement.prototype as Partial<HTMLInputElement>).showPicker;
+      }
+    }
   });
 
   it("keeps reminder details collapsed until the compact primary switch is enabled", async () => {
