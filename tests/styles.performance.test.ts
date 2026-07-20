@@ -24,9 +24,12 @@ describe("overlay animation performance", () => {
 describe("quick category menu layering", () => {
   it("raises the transformed input stacking context and keeps the menu opaque", () => {
     const openRule = css.match(/\.quick-input-wrap\.category-menu-open\s*\{([^}]*)\}/)?.[1] ?? "";
+    const navigationRule = css.match(/\.category-nav\s*\{([^}]*)\}/)?.[1] ?? "";
     const menuRule = css.match(/\.quick-category-menu\s*\{([^}]*)\}/)?.[1] ?? "";
+    const openLayer = Number(openRule.match(/z-index:\s*(\d+)/)?.[1] ?? 0);
+    const navigationLayer = Number(navigationRule.match(/z-index:\s*(\d+)/)?.[1] ?? 0);
 
-    expect(openRule).toMatch(/z-index:\s*(?:[1-9]\d*)/);
+    expect(openLayer).toBeGreaterThan(navigationLayer);
     expect(menuRule).toContain("background: rgb(var(--panel-rgb))");
     expect(menuRule).not.toContain("background: rgba");
     expect(menuRule).not.toContain("backdrop-filter");

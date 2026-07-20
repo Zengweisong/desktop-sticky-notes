@@ -201,7 +201,7 @@ button:active:not(:disabled) { transform: scale(.965); transition-duration: 80ms
 .quick-input-wrap:focus-within {
   border-color: color-mix(in srgb, var(--accent) 62%, transparent);
 }
-.quick-input-wrap.category-menu-open { z-index: 15; }
+.quick-input-wrap.category-menu-open { z-index: 25; }
 .quick-input-row {
   width: 100%;
   min-width: 0;
