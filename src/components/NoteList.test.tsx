@@ -100,6 +100,7 @@ describe("NoteList drag sorting", () => {
     });
 
     expect(container.querySelector(".reminder-badge")).toBeNull();
+    expect(container.querySelector(".due-badge")?.classList.contains("has-reminder")).toBe(false);
     expect(container.querySelector(".expand-button")).toBeNull();
     await act(async () => root.unmount());
     vi.useRealTimers();
@@ -123,7 +124,8 @@ describe("NoteList drag sorting", () => {
         onToggleCompleted={vi.fn()} onTogglePinned={vi.fn()} onEdit={vi.fn()}
         onMove={vi.fn()} onDelete={vi.fn()} />);
     });
-    expect(container.querySelector(".reminder-badge")).not.toBeNull();
+    expect(container.querySelector(".reminder-badge")).toBeNull();
+    expect(container.querySelector(".due-badge")?.classList.contains("has-reminder")).toBe(true);
     await act(async () => {
       container!.querySelector<HTMLButtonElement>(".expand-button")!.click();
     });
@@ -132,6 +134,7 @@ describe("NoteList drag sorting", () => {
     await act(async () => { vi.advanceTimersByTime(60_100); });
 
     expect(container.querySelector(".reminder-badge")).toBeNull();
+    expect(container.querySelector(".due-badge")?.classList.contains("has-reminder")).toBe(false);
     expect(container.querySelector(".expand-button")).toBeNull();
     await act(async () => root.unmount());
     vi.useRealTimers();

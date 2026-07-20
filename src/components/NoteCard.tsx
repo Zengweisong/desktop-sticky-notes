@@ -133,9 +133,9 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
         <div className="note-meta">
           {category && <span className="category-badge" title={category.name}><i style={{ backgroundColor: category.color }} />{category.name}</span>}
           {note.priority !== "normal" && <span className={`priority-badge ${note.priority}`}>{note.priority === "high" ? "高优先级" : "低优先级"}</span>}
-          {note.scheduledAt && <span className={`due-badge ${isPlanPast(note) ? "overdue" : ""}`}><Calendar size={11} />{formatPlanTime(note)}</span>}
+          {note.scheduledAt && <span className={`due-badge${isPlanPast(note) ? " overdue" : ""}${reminderVisible ? " has-reminder" : ""}`}><Calendar size={11} />{formatPlanTime(note)}</span>}
           {repeatSeries && <span className="repeat-badge"><Repeat2 size={11} />{describeRepeat(repeatSeries)}</span>}
-          {reminderVisible && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
+          {reminderVisible && !note.scheduledAt && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
         </div>
         {expanded && (reminderVisible || repeatSeries) && <div className="note-schedule-details">
           <div><b>事项时间</b><span>{note.scheduledAt ? formatPlanTime(note) : "未设置"}</span></div>

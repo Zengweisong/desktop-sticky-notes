@@ -723,10 +723,12 @@ textarea::placeholder, input::placeholder {
 .priority-badge.high, .due-badge.overdue { background: rgba(211, 74, 78, .13); color: #b43e45; }
 .priority-badge.low { background: rgba(58, 127, 190, .13); color: #3d739d; }
 .due-badge { background: rgba(120,120,120,.1); color: var(--muted); }
+.due-badge.has-reminder:not(.overdue) { background: rgba(210, 145, 30, .16); color: #9a6810; }
 .repeat-badge { background: rgba(112, 91, 185, .12); color: var(--muted); }
 .reminder-badge { background: rgba(210, 145, 30, .13); color: var(--muted); }
 .theme-dark .priority-badge.high, .theme-dark .due-badge.overdue { color: #ff9ea4; }
 .theme-dark .priority-badge.low { color: #9dccf1; }
+.theme-dark .due-badge.has-reminder:not(.overdue) { color: #f2c56f; }
 .note-actions { position: relative; display: flex; gap: 1px; opacity: .36; transition: opacity 140ms ease-out; }
 .note-card:hover .note-actions, .note-actions:focus-within { opacity: 1; }
 .note-actions > button {
