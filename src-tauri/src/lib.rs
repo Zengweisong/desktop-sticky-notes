@@ -21,6 +21,50 @@ static BACKGROUND_TOPMOST: AtomicBool = AtomicBool::new(true);
 const NO_REDIRECTION_BITMAP_STYLE: u32 = 0x0020_0000;
 #[cfg(windows)]
 static CREATE_WINDOW_HOOK: AtomicIsize = AtomicIsize::new(0);
+#[cfg(windows)]
+const BACKGROUND_INSET_CSS_PIXELS: f64 = 7.0;
+#[cfg(windows)]
+const PANEL_CORNER_RADIUS_CSS_PIXELS: f64 = 22.0;
+
+#[cfg(windows)]
+fn rounded_rect_coverage(x: i32, y: i32, width: i32, height: i32, radius: f64) -> u8 {
+    let radius = radius.max(1.0).min(f64::from(width.min(height)) / 2.0);
+    let pixel_x = f64::from(x) + 0.5;
+    let pixel_y = f64::from(y) + 0.5;
+    let right_center = f64::from(width) - radius;
+    let bottom_center = f64::from(height) - radius;
+    let corner_x = if pixel_x < radius {
+        radius - pixel_x
+    } else if pixel_x > right_center {
+        pixel_x - right_center
+    } else {
+        0.0
+    };
+    let corner_y = if pixel_y < radius {
+        radius - pixel_y
+    } else if pixel_y > bottom_center {
+        pixel_y - bottom_center
+    } else {
+        0.0
+    };
+
+    if corner_x == 0.0 || corner_y == 0.0 {
+        return 255;
+    }
+
+    let distance = corner_x.hypot(corner_y);
+    ((radius + 0.5 - distance).clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+#[cfg(windows)]
+fn background_pixel(red: u8, green: u8, blue: u8, alpha: u8, coverage: u8) -> u32 {
+    let effective_alpha = ((u32::from(alpha) * u32::from(coverage) + 127) / 255) as u8;
+    let premultiply = |channel: u8| (u32::from(channel) * u32::from(effective_alpha) + 127) / 255;
+    premultiply(blue)
+        | (premultiply(green) << 8)
+        | (premultiply(red) << 16)
+        | (u32::from(effective_alpha) << 24)
+}
 
 #[cfg(windows)]
 unsafe extern "system" fn no_redirection_window_hook(
@@ -100,8 +144,8 @@ fn apply_windows_transparency<M: Manager<tauri::Wry>>(manager: &M) -> tauri::Res
 #[cfg(windows)]
 fn setup_background_layer(app: &tauri::App) -> tauri::Result<()> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TRANSPARENT, WS_POPUP,
+        CreateWindowExW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+        WS_POPUP,
     };
 
     let class_name: Vec<u16> = "STATIC\0".encode_utf16().collect();
@@ -126,7 +170,41 @@ fn setup_background_layer(app: &tauri::App) -> tauri::Result<()> {
         eprintln!("创建原生透明背景窗口失败");
     } else {
         BACKGROUND_HWND.store(background_hwnd as isize, Ordering::Relaxed);
+        set_background_topmost_band(BACKGROUND_TOPMOST.load(Ordering::Relaxed))?;
         sync_background_layer(app);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn set_background_topmost_band(always_on_top: bool) -> std::io::Result<()> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+    };
+
+    let background_hwnd =
+        BACKGROUND_HWND.load(Ordering::Relaxed) as windows_sys::Win32::Foundation::HWND;
+    if background_hwnd.is_null() {
+        return Ok(());
+    }
+    let insert_after = if always_on_top {
+        HWND_TOPMOST
+    } else {
+        HWND_NOTOPMOST
+    };
+    if unsafe {
+        SetWindowPos(
+            background_hwnd,
+            insert_after,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error());
     }
     Ok(())
 }
@@ -141,16 +219,15 @@ fn sync_background_layer<M: Manager<tauri::Wry>>(manager: &M) {
         },
         UI::WindowsAndMessaging::{
             IsIconic, IsWindowVisible, SetWindowPos, ShowWindow, UpdateLayeredWindow,
-            HWND_NOTOPMOST, HWND_TOPMOST, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE,
-            SWP_NOMOVE, SWP_NOSIZE, ULW_ALPHA,
+            SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA,
         },
     };
 
     let Some(main) = manager.get_webview_window("main") else {
         return;
     };
-    let background_hwnd = BACKGROUND_HWND.load(Ordering::Relaxed)
-        as windows_sys::Win32::Foundation::HWND;
+    let background_hwnd =
+        BACKGROUND_HWND.load(Ordering::Relaxed) as windows_sys::Win32::Foundation::HWND;
     if background_hwnd.is_null() {
         return;
     }
@@ -159,18 +236,17 @@ fn sync_background_layer<M: Manager<tauri::Wry>>(manager: &M) {
         main.outer_position(),
         main.inner_size(),
         main.scale_factor(),
-    )
-    else {
+    ) else {
         return;
     };
     if unsafe { IsWindowVisible(main_hwnd.0) == 0 || IsIconic(main_hwnd.0) != 0 } {
         unsafe { ShowWindow(background_hwnd, SW_HIDE) };
         return;
     }
-    let inset = (7.0 * scale).round() as i32;
+    let inset = (BACKGROUND_INSET_CSS_PIXELS * scale).round() as i32;
     let width = size.width as i32 - inset * 2;
     let height = size.height as i32 - inset * 2;
-    let radius = (18.0 * scale).round() as i32;
+    let radius = PANEL_CORNER_RADIUS_CSS_PIXELS * scale;
     if width <= 0 || height <= 0 {
         return;
     }
@@ -203,26 +279,24 @@ fn sync_background_layer<M: Manager<tauri::Wry>>(manager: &M) {
             let red = ((rgba >> 16) & 0xff) as u8;
             let green = ((rgba >> 8) & 0xff) as u8;
             let blue = (rgba & 0xff) as u8;
-            let premultiply = |channel: u8| (channel as u16 * alpha as u16 / 255) as u32;
-            let pixel = premultiply(blue)
-                | (premultiply(green) << 8)
-                | (premultiply(red) << 16)
-                | ((alpha as u32) << 24);
-            let pixels = std::slice::from_raw_parts_mut(bits as *mut u32, (width * height) as usize);
-            let r = radius.max(1);
+            let pixels =
+                std::slice::from_raw_parts_mut(bits as *mut u32, (width * height) as usize);
             for y in 0..height {
                 for x in 0..width {
-                    let corner_x = if x < r { r - x } else if x >= width - r { x - (width - r - 1) } else { 0 };
-                    let corner_y = if y < r { r - y } else if y >= height - r { y - (height - r - 1) } else { 0 };
-                    pixels[(y * width + x) as usize] = if corner_x == 0
-                        || corner_y == 0
-                        || corner_x * corner_x + corner_y * corner_y <= r * r
-                    { pixel } else { 0 };
+                    let coverage = rounded_rect_coverage(x, y, width, height, radius);
+                    pixels[(y * width + x) as usize] =
+                        background_pixel(red, green, blue, alpha, coverage);
                 }
             }
             let old_bitmap = SelectObject(memory_dc, bitmap);
-            let destination = POINT { x: position.x + inset, y: position.y + inset };
-            let layer_size = SIZE { cx: width, cy: height };
+            let destination = POINT {
+                x: position.x + inset,
+                y: position.y + inset,
+            };
+            let layer_size = SIZE {
+                cx: width,
+                cy: height,
+            };
             let source = POINT { x: 0, y: 0 };
             let blend = BLENDFUNCTION {
                 BlendOp: 0,
@@ -243,20 +317,6 @@ fn sync_background_layer<M: Manager<tauri::Wry>>(manager: &M) {
             );
             SelectObject(memory_dc, old_bitmap);
         }
-        let z_band = if BACKGROUND_TOPMOST.load(Ordering::Relaxed) {
-            HWND_TOPMOST
-        } else {
-            HWND_NOTOPMOST
-        };
-        SetWindowPos(
-            background_hwnd,
-            z_band,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
-        );
         SetWindowPos(
             background_hwnd,
             main_hwnd.0,
@@ -266,7 +326,9 @@ fn sync_background_layer<M: Manager<tauri::Wry>>(manager: &M) {
             0,
             SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE,
         );
-        if !bitmap.is_null() { DeleteObject(bitmap); }
+        if !bitmap.is_null() {
+            DeleteObject(bitmap);
+        }
         DeleteDC(memory_dc);
         ReleaseDC(std::ptr::null_mut(), screen_dc);
     }
@@ -287,17 +349,14 @@ fn set_background_appearance(
             _ => (255_u8, 248_u8, 218_u8),
         };
         let alpha = ((opacity.min(100) as u16 * 255) / 100) as u8;
-        let rgba = ((alpha as u32) << 24)
-            | ((red as u32) << 16)
-            | ((green as u32) << 8)
-            | blue as u32;
+        let rgba =
+            ((alpha as u32) << 24) | ((red as u32) << 16) | ((green as u32) << 8) | blue as u32;
         BACKGROUND_RGBA.store(rgba, Ordering::Relaxed);
         BACKGROUND_TOPMOST.store(always_on_top, Ordering::Relaxed);
         apply_windows_transparency(&app).map_err(|error| error.to_string())?;
         if let Some(main) = app.get_webview_window("main") {
             use windows_sys::Win32::UI::WindowsAndMessaging::{
-                SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
-                SWP_NOSIZE,
+                SetWindowPos, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
             };
             let hwnd = main.hwnd().map_err(|error| error.to_string())?;
             let insert_after = if always_on_top {
@@ -320,6 +379,7 @@ fn set_background_appearance(
                 return Err(std::io::Error::last_os_error().to_string());
             }
         }
+        set_background_topmost_band(always_on_top).map_err(|error| error.to_string())?;
         sync_background_layer(&app);
     }
     #[cfg(not(windows))]
@@ -335,8 +395,8 @@ fn set_background_visible(app: tauri::AppHandle, visible: bool) {
             sync_background_layer(&app);
         } else {
             use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
-            let hwnd = BACKGROUND_HWND.load(Ordering::Relaxed)
-                as windows_sys::Win32::Foundation::HWND;
+            let hwnd =
+                BACKGROUND_HWND.load(Ordering::Relaxed) as windows_sys::Win32::Foundation::HWND;
             if !hwnd.is_null() {
                 unsafe { ShowWindow(hwnd, SW_HIDE) };
             }
@@ -741,5 +801,41 @@ mod tests {
     #[test]
     fn transparency_uses_the_no_redirection_bitmap_style() {
         assert_eq!(NO_REDIRECTION_BITMAP_STYLE, 0x0020_0000);
+    }
+
+    #[test]
+    fn rounded_background_has_antialiased_edge_pixels() {
+        let coverages =
+            (0..44).flat_map(|y| (0..44).map(move |x| rounded_rect_coverage(x, y, 100, 100, 22.0)));
+
+        assert!(coverages
+            .into_iter()
+            .any(|coverage| (1..255).contains(&coverage)));
+    }
+
+    #[test]
+    fn rounded_background_applies_coverage_to_pixel_alpha() {
+        let pixel = background_pixel(36, 40, 48, 200, 128);
+        let effective_alpha = (pixel >> 24) as u8;
+
+        assert!(effective_alpha > 0);
+        assert!(effective_alpha < 200);
+    }
+
+    #[test]
+    fn drag_sync_does_not_toggle_background_topmost_band() {
+        let source = include_str!("lib.rs");
+        let sync_body = source
+            .split_once("fn sync_background_layer")
+            .expect("sync_background_layer should exist")
+            .1
+            .split_once("#[tauri::command]")
+            .expect("the next command should delimit sync_background_layer")
+            .0;
+
+        assert!(!sync_body.contains("HWND_TOPMOST"));
+        assert!(!sync_body.contains("HWND_NOTOPMOST"));
+        assert!(!sync_body.contains("set_background_topmost_band"));
+        assert_eq!(sync_body.matches("SetWindowPos(").count(), 1);
     }
 }
