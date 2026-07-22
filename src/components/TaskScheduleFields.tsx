@@ -117,7 +117,7 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
 
     {showPrimaryRow && <div className="schedule-title"><Clock3 size={14} /><span>时间安排</span></div>}
 
-    <section className="schedule-block" aria-labelledby="plan-time-label">
+    {!repeatEnabled && <section className="schedule-block" aria-labelledby="plan-time-label">
       <div className="schedule-label" id="plan-time-label">事项时间 <small>可选</small></div>
       <div className="plan-time-row">
         <PickerInput type="date" value={planDate} placeholder="选择日期" icon="date"
@@ -125,7 +125,7 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
         <PickerInput type="time" value={planTime} placeholder="选择时间" icon="time"
           onChange={(next) => patchPlan(planDate, next)} />
       </div>
-    </section>
+    </section>}
 
     <section className="schedule-block repeat-block">
       <label className="schedule-control-row">

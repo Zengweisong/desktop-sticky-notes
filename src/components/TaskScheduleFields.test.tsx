@@ -37,6 +37,20 @@ describe("TaskScheduleFields product rules", () => {
     await act(async () => { repeat.value = "daily"; repeat.dispatchEvent(new Event("change", { bubbles: true })); });
     expect(repeat.value).toBe("daily");
     expect(container!.querySelector<HTMLButtonElement>('[role="switch"]')!.getAttribute("aria-checked")).toBe("false");
+    expect(container!.querySelector('[aria-labelledby="plan-time-label"]')).toBeNull();
+    expect(container!.querySelector('.reminder-options')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("shows reminder time options for a repeat item only after reminders are enabled", async () => {
+    const root = await render({ scheduledAt: futurePlan(), repeatEnabled: true }, true);
+    expect(container!.querySelector('[aria-labelledby="plan-time-label"]')).toBeNull();
+    expect(container!.querySelector(".reminder-details-block")).toBeNull();
+
+    const reminder = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
+    await act(async () => reminder.click());
+
+    expect(container!.querySelector(".reminder-details-block .reminder-options")).not.toBeNull();
     await act(async () => root.unmount());
   });
 
