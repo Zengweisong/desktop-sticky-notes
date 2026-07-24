@@ -4,7 +4,8 @@ import type { RepeatEndType, RepeatSeries, RepeatSeriesRow, RepeatType } from ".
 
 const SERIES_FIELDS = `id, title, details, category_id, priority, repeat_type, repeat_interval,
   repeat_weekdays, repeat_month_day, start_at, end_type, end_date, max_occurrences,
-  generated_occurrences, default_reminder_enabled, default_reminder_offset_minutes,
+  generated_occurrences, default_reminder_enabled, default_all_day_reminder_time,
+  default_reminder_offset_minutes,
   next_occurrence_at, active, created_at, updated_at`;
 type DatabaseConnection = Awaited<ReturnType<typeof getDatabase>>;
 
@@ -16,6 +17,7 @@ export function fromSeriesRow(row: RepeatSeriesRow): RepeatSeries {
     startAt: row.start_at, endType: row.end_type, endDate: row.end_date,
     maxOccurrences: row.max_occurrences, generatedOccurrences: row.generated_occurrences,
     defaultReminderEnabled: Boolean(row.default_reminder_enabled),
+    defaultReminderTime: row.default_all_day_reminder_time || legacyRepeatReminderTime(row),
     defaultReminderOffsetMinutes: row.default_reminder_offset_minutes,
     nextOccurrenceAt: row.next_occurrence_at, active: Boolean(row.active),
     createdAt: row.created_at, updatedAt: row.updated_at
@@ -38,57 +40,50 @@ export async function listRepeatSeries(): Promise<RepeatSeries[]> {
 
 export async function createRepeatSeries(
   input: NoteInput, categoryId: number, existingNoteId?: number,
-  database?: DatabaseConnection, manageTransaction = true
+  database?: DatabaseConnection
 ): Promise<{ seriesId: number; noteId: number }> {
   const definition = normalizeRepeatInput(input);
   const db = database || await getDatabase();
   const now = new Date().toISOString();
-  if (manageTransaction) await db.execute("BEGIN IMMEDIATE");
-  try {
-    const provisional: RepeatSeries = {
+  const provisional: RepeatSeries = {
       id: 0, title: input.title.trim(), details: input.details?.trim() || null, categoryId,
       priority: input.priority || "normal", ...definition, generatedOccurrences: 1,
-      defaultReminderEnabled: Boolean(input.reminderEnabled),
-      defaultReminderOffsetMinutes: input.reminderOffsetMinutes || 0,
+      defaultReminderEnabled: input.repeatReminderEnabled !== false,
+      defaultReminderTime: normalizeReminderTime(input.repeatReminderTime),
+      defaultReminderOffsetMinutes: 0,
       nextOccurrenceAt: null, active: true, createdAt: now, updatedAt: now
-    };
-    provisional.nextOccurrenceAt = calculateNextOccurrence(provisional, new Date(provisional.startAt));
-    provisional.active = provisional.nextOccurrenceAt !== null;
-    const result = await db.execute(
+  };
+  provisional.nextOccurrenceAt = calculateNextOccurrence(provisional, new Date(provisional.startAt));
+  provisional.active = provisional.nextOccurrenceAt !== null;
+  const result = await db.execute(
       `INSERT INTO repeat_series (title, details, category_id, priority, repeat_type, repeat_interval,
        repeat_weekdays, repeat_month_day, start_at, end_type, end_date, max_occurrences,
-       generated_occurrences, default_reminder_enabled, default_reminder_offset_minutes,
-       next_occurrence_at, active, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,1,$13,$14,$15,$16,$17,$17)`,
+       generated_occurrences, default_reminder_enabled, default_all_day_reminder_time,
+       default_reminder_offset_minutes, next_occurrence_at, active, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,1,$13,$14,$15,$16,$17,$18,$18)`,
       [provisional.title, provisional.details, categoryId, provisional.priority, provisional.repeatType,
         provisional.repeatInterval, serializeWeekdays(provisional.repeatWeekdays), provisional.repeatMonthDay,
         provisional.startAt, provisional.endType, provisional.endDate, provisional.maxOccurrences,
-        provisional.defaultReminderEnabled ? 1 : 0, provisional.defaultReminderOffsetMinutes,
-        provisional.nextOccurrenceAt, provisional.active ? 1 : 0, now]
-    );
-    const seriesId = Number(result.lastInsertId);
-    let noteId: number;
-    if (existingNoteId != null) {
-      await db.execute(
+        provisional.defaultReminderEnabled ? 1 : 0, provisional.defaultReminderTime,
+        provisional.defaultReminderOffsetMinutes, provisional.nextOccurrenceAt,
+        provisional.active ? 1 : 0, now]
+  );
+  const seriesId = Number(result.lastInsertId);
+  let noteId: number;
+  if (existingNoteId != null) {
+    await db.execute(
         `UPDATE notes SET repeat_series_id = $1, repeat_occurrence_at = $2, scheduled_at = $2,
          reminder_enabled = $3, reminder_offset_minutes = $4, reminder_at = $5,
          reminder_triggered_at = NULL, updated_at = $6 WHERE id = $7`,
         [seriesId, provisional.startAt, provisional.defaultReminderEnabled ? 1 : 0,
-          provisional.defaultReminderOffsetMinutes, reminderAt(provisional.startAt,
-            provisional.defaultReminderEnabled, provisional.defaultReminderOffsetMinutes), now, existingNoteId]
-      );
-      noteId = existingNoteId;
-    } else {
-      noteId = await insertOccurrence(db, { ...provisional, id: seriesId }, provisional.startAt, now);
-    }
-    if (manageTransaction) await db.execute("COMMIT");
-    return { seriesId, noteId };
-  } catch (error) {
-    if (manageTransaction) {
-      try { await db.execute("ROLLBACK"); } catch { /* original error is more useful */ }
-    }
-    throw error;
+          0, repeatReminderAt(provisional.startAt, provisional.defaultReminderEnabled,
+            provisional.defaultReminderTime), now, existingNoteId]
+    );
+    noteId = existingNoteId;
+  } else {
+    noteId = await insertOccurrence(db, { ...provisional, id: seriesId }, provisional.startAt, now);
   }
+  return { seriesId, noteId };
 }
 
 export async function updateRepeatSeries(
@@ -100,8 +95,9 @@ export async function updateRepeatSeries(
   const nextBase: RepeatSeries = {
     ...current, title: input.title.trim(), details: input.details?.trim() || null, categoryId,
     priority: input.priority || "normal", ...definition,
-    defaultReminderEnabled: Boolean(input.reminderEnabled),
-    defaultReminderOffsetMinutes: input.reminderOffsetMinutes || 0,
+    defaultReminderEnabled: Boolean(input.repeatReminderEnabled),
+    defaultReminderTime: normalizeReminderTime(input.repeatReminderTime || current.defaultReminderTime),
+    defaultReminderOffsetMinutes: 0,
     // Editing re-anchors future generation while preserving the number of
     // occurrences already consumed by count-limited series.
     active: true,
@@ -113,44 +109,30 @@ export async function updateRepeatSeries(
     `UPDATE repeat_series SET title=$1, details=$2, category_id=$3, priority=$4, repeat_type=$5,
      repeat_interval=$6, repeat_weekdays=$7, repeat_month_day=$8, start_at=$9, end_type=$10,
      end_date=$11, max_occurrences=$12, default_reminder_enabled=$13,
-     default_reminder_offset_minutes=$14, next_occurrence_at=$15, active=$16, updated_at=$17 WHERE id=$18`,
+     default_all_day_reminder_time=$14, default_reminder_offset_minutes=$15,
+     next_occurrence_at=$16, active=$17, updated_at=$18 WHERE id=$19`,
     [nextBase.title, nextBase.details, categoryId, nextBase.priority, nextBase.repeatType,
       nextBase.repeatInterval, serializeWeekdays(nextBase.repeatWeekdays), nextBase.repeatMonthDay,
       nextBase.startAt, nextBase.endType, nextBase.endDate, nextBase.maxOccurrences,
-      nextBase.defaultReminderEnabled ? 1 : 0, nextBase.defaultReminderOffsetMinutes,
-      nextBase.nextOccurrenceAt, nextBase.active ? 1 : 0, nextBase.updatedAt, seriesId]
+      nextBase.defaultReminderEnabled ? 1 : 0, nextBase.defaultReminderTime,
+      nextBase.defaultReminderOffsetMinutes, nextBase.nextOccurrenceAt,
+      nextBase.active ? 1 : 0, nextBase.updatedAt, seriesId]
   );
 }
 
 export async function stopRepeatSeries(
-  seriesId: number, database?: DatabaseConnection, manageTransaction = true
+  seriesId: number, database?: DatabaseConnection
 ): Promise<void> {
   const db = database || await getDatabase();
-  if (manageTransaction) await db.execute("BEGIN IMMEDIATE");
-  try {
-    // Existing occurrences remain ordinary independent notes, including their reminders.
-    await db.execute("UPDATE notes SET repeat_series_id = NULL, repeat_occurrence_at = NULL WHERE repeat_series_id = $1", [seriesId]);
-    await db.execute("DELETE FROM repeat_series WHERE id = $1", [seriesId]);
-    if (manageTransaction) await db.execute("COMMIT");
-  } catch (error) {
-    if (manageTransaction) {
-      try { await db.execute("ROLLBACK"); } catch { /* preserve original error */ }
-    }
-    throw error;
-  }
+  // Existing occurrences remain ordinary independent notes, including their reminders.
+  await db.execute("UPDATE notes SET repeat_series_id = NULL, repeat_occurrence_at = NULL WHERE repeat_series_id = $1", [seriesId]);
+  await db.execute("DELETE FROM repeat_series WHERE id = $1", [seriesId]);
 }
 
 export async function deleteRepeatSeries(seriesId: number): Promise<void> {
   const db = await getDatabase();
-  await db.execute("BEGIN IMMEDIATE");
-  try {
-    await db.execute("DELETE FROM notes WHERE repeat_series_id = $1", [seriesId]);
-    await db.execute("DELETE FROM repeat_series WHERE id = $1", [seriesId]);
-    await db.execute("COMMIT");
-  } catch (error) {
-    try { await db.execute("ROLLBACK"); } catch { /* preserve original error */ }
-    throw error;
-  }
+  await db.execute("DELETE FROM notes WHERE repeat_series_id = $1", [seriesId]);
+  await db.execute("DELETE FROM repeat_series WHERE id = $1", [seriesId]);
 }
 
 export async function setRepeatSeriesActive(seriesId: number, active: boolean): Promise<void> {
@@ -194,9 +176,7 @@ export async function generateDueOccurrences(now = new Date()): Promise<number> 
     const state = { ...series, generatedOccurrences: processed };
     const next = calculateNextOccurrence(state, new Date(latest));
     const active = next !== null;
-    await db.execute("BEGIN IMMEDIATE");
-    try {
-      const result = await db.execute(
+    const result = await db.execute(
         `INSERT OR IGNORE INTO notes (content, title, details, category_id, priority, scheduled_at,
          repeat_series_id, repeat_occurrence_at, reminder_enabled, reminder_at,
          reminder_offset_minutes, created_at, updated_at, sort_order)
@@ -204,20 +184,15 @@ export async function generateDueOccurrences(now = new Date()): Promise<number> 
            (SELECT COALESCE(MAX(sort_order),0)+10 FROM notes WHERE completed=0 AND pinned=0))`,
         [series.title, series.details, series.categoryId, series.priority, latest, series.id,
           series.defaultReminderEnabled ? 1 : 0,
-          reminderAt(latest, series.defaultReminderEnabled, series.defaultReminderOffsetMinutes),
-          series.defaultReminderOffsetMinutes, now.toISOString()]
-      );
-      await db.execute(
+          repeatReminderAt(latest, series.defaultReminderEnabled, series.defaultReminderTime),
+          0, now.toISOString()]
+    );
+    await db.execute(
         `UPDATE repeat_series SET generated_occurrences=$1, next_occurrence_at=$2,
          active=$3, updated_at=$4 WHERE id=$5`,
         [processed, next, active ? 1 : 0, now.toISOString(), series.id]
-      );
-      await db.execute("COMMIT");
-      if (result.rowsAffected > 0) generated += 1;
-    } catch (error) {
-      try { await db.execute("ROLLBACK"); } catch { /* preserve original error */ }
-      throw error;
-    }
+    );
+    if (result.rowsAffected > 0) generated += 1;
   }
   return generated;
 }
@@ -313,37 +288,40 @@ function setTime(target: Date, source: Date) {
 function normalizeRepeatInput(input: NoteInput): Pick<RepeatSeries,
   "repeatType" | "repeatInterval" | "repeatWeekdays" | "repeatMonthDay" | "startAt" |
   "endType" | "endDate" | "maxOccurrences"> {
-  if (!input.scheduledAt || Number.isNaN(new Date(input.scheduledAt).getTime())) throw new Error("重复事项需要设置首次事项时间");
+  const startDate = normalizeStartDate(input.repeatStartDate, input.scheduledAt);
+  const startAt = new Date(`${startDate}T00:00:00`);
   const repeatType = input.repeatType || "daily";
   const repeatInterval = Math.max(1, Math.floor(input.repeatInterval || 1));
   const repeatWeekdays = repeatType === "weekdays" ? [1, 2, 3, 4, 5]
     : [...new Set(input.repeatWeekdays?.filter((day) => day >= 0 && day <= 6) || [])];
-  if (repeatType === "weekly" && !repeatWeekdays.length) repeatWeekdays.push(new Date(input.scheduledAt).getDay());
+  if (repeatType === "weekly" && !repeatWeekdays.length) repeatWeekdays.push(startAt.getDay());
   const endType = input.repeatEndType || "never";
   const maxOccurrences = endType === "count" ? Math.max(1, Math.floor(input.repeatMaxOccurrences || 1)) : null;
   if (endType === "date" && !input.repeatEndDate) throw new Error("请选择重复结束日期");
-  if (endType === "date" && input.repeatEndDate &&
-    new Date(input.scheduledAt).getTime() > new Date(`${input.repeatEndDate}T23:59:59.999`).getTime()) {
-    throw new Error("重复结束日期不能早于首次事项时间");
+  if (endType === "date" && input.repeatEndDate && startDate > input.repeatEndDate) {
+    throw new Error("重复结束日期不能早于开始日期");
   }
   return {
     repeatType, repeatInterval, repeatWeekdays,
     repeatMonthDay: repeatType === "monthly"
-      ? Math.min(31, Math.max(1, input.repeatMonthDay || new Date(input.scheduledAt).getDate())) : null,
-    startAt: input.scheduledAt, endType, endDate: endType === "date" ? input.repeatEndDate || null : null,
+      ? Math.min(31, Math.max(1, input.repeatMonthDay || startAt.getDate())) : null,
+    startAt: startAt.toISOString(), endType, endDate: endType === "date" ? input.repeatEndDate || null : null,
     maxOccurrences
   };
 }
 
 function generationTime(series: RepeatSeries, occurrenceAt: string) {
-  const offset = series.defaultReminderEnabled ? series.defaultReminderOffsetMinutes : 0;
-  return new Date(new Date(occurrenceAt).getTime() - offset * 60_000);
+  if (!series.defaultReminderEnabled) return new Date(occurrenceAt);
+  return new Date(repeatReminderAt(occurrenceAt, true, series.defaultReminderTime)!);
 }
 
-function reminderAt(occurrenceAt: string, enabled: boolean, offset: number) {
+export function repeatReminderAt(occurrenceAt: string, enabled: boolean, time?: string | null) {
   if (!enabled) return null;
-  const date = new Date(occurrenceAt);
-  return new Date(date.getTime() - offset * 60_000).toISOString();
+  const occurrence = new Date(occurrenceAt);
+  if (Number.isNaN(occurrence.getTime())) return null;
+  const [hour, minute] = normalizeReminderTime(time).split(":").map(Number);
+  const date = new Date(occurrence.getFullYear(), occurrence.getMonth(), occurrence.getDate(), hour, minute, 0, 0);
+  return date.toISOString();
 }
 
 async function insertOccurrence(
@@ -357,8 +335,8 @@ async function insertOccurrence(
        (SELECT COALESCE(MAX(sort_order),0)+10 FROM notes WHERE completed=0 AND pinned=0))`,
     [series.title, series.details, series.categoryId, series.priority, occurrenceAt, series.id,
       series.defaultReminderEnabled ? 1 : 0,
-      reminderAt(occurrenceAt, series.defaultReminderEnabled, series.defaultReminderOffsetMinutes),
-      series.defaultReminderOffsetMinutes, createdAt]
+      repeatReminderAt(occurrenceAt, series.defaultReminderEnabled, series.defaultReminderTime),
+      0, createdAt]
   );
   return Number(result.lastInsertId);
 }
@@ -368,6 +346,31 @@ function parseWeekdays(value: string | null) {
   return value.split(",").map(Number).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
 }
 function serializeWeekdays(value: number[]) { return value.length ? value.join(",") : null; }
+
+function normalizeStartDate(value?: string, fallback?: string | null) {
+  if (value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00`).getTime())) return value;
+  if (fallback) {
+    const date = new Date(fallback);
+    if (!Number.isNaN(date.getTime())) return localDate(date);
+  }
+  return localDate(new Date());
+}
+
+function normalizeReminderTime(value?: string | null) {
+  return value && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : "09:00";
+}
+
+function legacyRepeatReminderTime(row: RepeatSeriesRow) {
+  if (!row.default_reminder_enabled) return null;
+  const start = new Date(row.start_at);
+  if (Number.isNaN(start.getTime())) return "09:00";
+  const reminder = new Date(start.getTime() - Math.max(0, row.default_reminder_offset_minutes || 0) * 60_000);
+  return `${String(reminder.getHours()).padStart(2, "0")}:${String(reminder.getMinutes()).padStart(2, "0")}`;
+}
+
+function localDate(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
 
 export function describeRepeat(series: Pick<RepeatSeries, "repeatType" | "repeatInterval" | "repeatWeekdays" | "repeatMonthDay">) {
   const interval = series.repeatInterval;

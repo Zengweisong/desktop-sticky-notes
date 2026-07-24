@@ -75,6 +75,39 @@ describe("editing a reminder through the pooled Tauri database", () => {
       0, null, 60, "series", expect.any(String), 7
     ]);
   });
+
+  it("detaches one repeat occurrence after its item time is cleared", async () => {
+    db.select.mockReset();
+    db.select
+      .mockResolvedValueOnce([{
+        ...existingNoteRow(),
+        scheduled_at: "2026-07-20T16:00:00.000Z",
+        repeat_series_id: 3,
+        repeat_occurrence_at: "2026-07-20T16:00:00.000Z",
+        reminder_enabled: 1,
+        reminder_at: "2026-07-21T01:00:00.000Z"
+      }])
+      .mockResolvedValueOnce([{ id: 1 }]);
+
+    await expect(updateNote(7, {
+      title: "提交周报",
+      categoryId: 1,
+      priority: "normal",
+      scheduledAt: null,
+      reminderEnabled: false,
+      repeatEnabled: false,
+      repeatEditScope: "occurrence"
+    })).resolves.toBeUndefined();
+
+    expect(db.execute).toHaveBeenCalledWith(
+      "UPDATE notes SET repeat_series_id=NULL, repeat_occurrence_at=NULL WHERE id=$1", [7]
+    );
+    const updateCall = db.execute.mock.calls.find(([sql]) => sql.includes("UPDATE notes SET content"));
+    expect(updateCall?.[1]).toEqual([
+      "提交周报", null, 1, "normal", null, 0, null, 10, "occurrence", expect.any(String), 7
+    ]);
+    expect(db.execute.mock.calls.map(([sql]) => sql).join(" ")).not.toMatch(/BEGIN|COMMIT|ROLLBACK/);
+  });
 });
 
 describe("creating with the unified item time", () => {

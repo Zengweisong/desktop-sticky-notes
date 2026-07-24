@@ -3,7 +3,7 @@ import type { ExportPayloadV2, ExportPayloadV3, Category, CategoryRow } from "..
 import type { ExportPayloadV1, Note, NoteInput, NotePriority, NoteRow, NoteUpdate } from "../types/note";
 import { listCategories } from "./categoryService";
 import { ReminderService } from "./reminderService";
-import { createRepeatSeries, deleteRepeatSeries, listRepeatSeries, setRepeatSeriesActive, stopRepeatSeries, updateRepeatSeries } from "./repeatTaskService";
+import { createRepeatSeries, deleteRepeatSeries, getRepeatSeries, listRepeatSeries, repeatReminderAt, setRepeatSeriesActive, stopRepeatSeries, updateRepeatSeries } from "./repeatTaskService";
 import type { RepeatSeries } from "../types/repeat";
 import { ensureBoardPlacement, setBoardNoteCompleted } from "./boardService";
 import { COMPLETED_COLUMN_ID, TODO_COLUMN_ID } from "../types/board";
@@ -69,7 +69,6 @@ export async function createNote(input: NoteInput): Promise<Note> {
   const title = input.title.trim();
   if (!title) throw new Error("事项标题不能为空");
   try {
-    const reminderAt = await ReminderService.scheduleReminder(input);
     const db = await getDatabase();
     const now = new Date().toISOString();
     const categoryId = await resolveCategoryId(input.categoryId);
@@ -85,6 +84,7 @@ export async function createNote(input: NoteInput): Promise<Note> {
       const rows = await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes WHERE id = $1`, [created.noteId]);
       return fromRow(rows[0]);
     }
+    const reminderAt = await ReminderService.scheduleReminder(input);
     const order = await db.select<Array<{ next_order: number }>>(
       "SELECT COALESCE(MAX(sort_order), 0) + 10 AS next_order FROM notes WHERE completed = 0 AND pinned = 0"
     );
@@ -115,22 +115,42 @@ export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
     const currentRows = await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes WHERE id = $1`, [id]);
     if (!currentRows.length) throw new Error("事项不存在");
     const current = fromRow(currentRows[0]);
-    const computedReminderAt = input.reminderEnabled
-      ? await ReminderService.updateReminder(id, input)
-      : (await ReminderService.cancelReminder(id), null);
     const categoryId = await resolveCategoryId(input.categoryId);
+    let scheduledAt = input.scheduledAt || null;
+    let reminderEnabled = Boolean(input.reminderEnabled);
+    let reminderOffsetMinutes = input.reminderOffsetMinutes ?? 10;
+    let computedReminderAt: string | null = null;
     if (input.repeatEnabled) {
+      await ReminderService.cancelReminder(id);
+      let seriesId = current.repeatSeriesId;
       if (current.repeatSeriesId != null) {
         if (input.repeatEditScope !== "occurrence") {
           await updateRepeatSeries(current.repeatSeriesId, input, categoryId, db);
         }
-      } else await createRepeatSeries(input, categoryId, id, db, false);
+      } else {
+        const created = await createRepeatSeries(input, categoryId, id, db);
+        seriesId = created.seriesId;
+      }
+      const series = seriesId == null ? null : await getRepeatSeries(seriesId, db);
+      const seriesScope = input.repeatEditScope !== "occurrence";
+      scheduledAt = seriesScope ? series?.startAt || scheduledAt : current.repeatOccurrenceAt || current.scheduledAt;
+      reminderEnabled = input.repeatReminderEnabled ?? series?.defaultReminderEnabled ?? true;
+      const repeatReminderTime = input.repeatReminderTime || series?.defaultReminderTime || "09:00";
+      computedReminderAt = scheduledAt ? repeatReminderAt(scheduledAt, reminderEnabled, repeatReminderTime) : null;
+      reminderOffsetMinutes = 0;
     } else if (current.repeatSeriesId != null) {
       if (input.repeatEditScope === "occurrence") {
         await db.execute(
           "UPDATE notes SET repeat_series_id=NULL, repeat_occurrence_at=NULL WHERE id=$1", [id]
         );
-      } else await stopRepeatSeries(current.repeatSeriesId, db, false);
+      } else await stopRepeatSeries(current.repeatSeriesId, db);
+      computedReminderAt = reminderEnabled
+        ? await ReminderService.updateReminder(id, input)
+        : (await ReminderService.cancelReminder(id), null);
+    } else {
+      computedReminderAt = reminderEnabled
+        ? await ReminderService.updateReminder(id, input)
+        : (await ReminderService.cancelReminder(id), null);
     }
     await db.execute(
       `UPDATE notes SET content = $1, title = $1, details = $2, category_id = $3,
@@ -143,8 +163,8 @@ export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
          WHEN $9 = 'occurrence' THEN repeat_occurrence_at ELSE $5 END,
        updated_at = $10 WHERE id = $11`,
       [title, input.details?.trim() || null, categoryId, input.priority || "normal",
-        input.scheduledAt || null, input.reminderEnabled ? 1 : 0, computedReminderAt,
-        input.reminderOffsetMinutes ?? 10, input.repeatEditScope || "series", new Date().toISOString(), id]
+        scheduledAt, reminderEnabled ? 1 : 0, computedReminderAt,
+        reminderOffsetMinutes, input.repeatEditScope || "series", new Date().toISOString(), id]
     );
   } catch (error) {
     console.error("编辑事项失败:", error);
@@ -276,7 +296,9 @@ function isV3(value: unknown): value is ExportPayloadV3 {
     Number.isInteger(series.repeatInterval) && series.repeatInterval > 0 && Array.isArray(series.repeatWeekdays) &&
     ["never", "date", "count"].includes(series.endType) && typeof series.startAt === "string" &&
     typeof series.generatedOccurrences === "number" && typeof series.defaultReminderEnabled === "boolean" &&
-    typeof series.defaultReminderOffsetMinutes === "number" && typeof series.active === "boolean");
+    typeof series.defaultReminderOffsetMinutes === "number" &&
+    (series.defaultReminderTime == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(series.defaultReminderTime)) &&
+    typeof series.active === "boolean");
 }
 
 export async function importNotes(value: unknown): Promise<void> {
@@ -352,17 +374,26 @@ async function insertImportedSeries(
   const result = await db.execute(
     `INSERT INTO repeat_series (title, details, category_id, priority, repeat_type, repeat_interval,
      repeat_weekdays, repeat_month_day, start_at, end_type, end_date, max_occurrences,
-     generated_occurrences, default_reminder_enabled, default_reminder_offset_minutes,
-     next_occurrence_at, active, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+     generated_occurrences, default_reminder_enabled, default_all_day_reminder_time,
+     default_reminder_offset_minutes, next_occurrence_at, active, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [series.title.trim(), series.details, categoryId, series.priority, series.repeatType,
       series.repeatInterval, series.repeatWeekdays.join(",") || null, series.repeatMonthDay,
       series.startAt, series.endType, series.endDate, series.maxOccurrences,
       series.generatedOccurrences, series.defaultReminderEnabled ? 1 : 0,
+      series.defaultReminderTime || legacyImportedReminderTime(series),
       series.defaultReminderOffsetMinutes, series.nextOccurrenceAt, series.active ? 1 : 0,
       series.createdAt, series.updatedAt]
   );
   return Number(result.lastInsertId);
+}
+
+function legacyImportedReminderTime(series: RepeatSeries) {
+  if (!series.defaultReminderEnabled) return null;
+  const start = new Date(series.startAt);
+  if (Number.isNaN(start.getTime())) return "09:00";
+  const reminder = new Date(start.getTime() - Math.max(0, series.defaultReminderOffsetMinutes || 0) * 60_000);
+  return `${String(reminder.getHours()).padStart(2, "0")}:${String(reminder.getMinutes()).padStart(2, "0")}`;
 }
 
 export type { Category, CategoryRow };

@@ -76,6 +76,12 @@ export interface NoteInput {
   repeatEndType?: import("./repeat").RepeatEndType;
   repeatEndDate?: string | null;
   repeatMaxOccurrences?: number | null;
+  /** 重复系列的开始日期，与普通事项 scheduledAt 相互独立。 */
+  repeatStartDate?: string;
+  /** 重复系列自己的提醒开关，不复用普通事项 reminderEnabled。 */
+  repeatReminderEnabled?: boolean;
+  /** 每次重复发生当天的具体提醒时间，格式为 HH:mm。 */
+  repeatReminderTime?: string;
   repeatEditScope?: "occurrence" | "series";
   boardColumnId?: string;
 }

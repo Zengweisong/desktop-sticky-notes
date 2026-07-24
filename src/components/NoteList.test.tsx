@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Note } from "../types/note";
+import type { RepeatSeries } from "../types/repeat";
 import { NoteList } from "./NoteList";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -137,6 +138,29 @@ describe("NoteList drag sorting", () => {
     vi.useRealTimers();
   });
 
+  it("does not present a repeat occurrence date as an item time", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const repeated = {
+      ...makeNote(5, "每日更新信息"),
+      scheduledAt: "2026-07-23T00:00:00.000Z",
+      repeatSeriesId: 4,
+      repeatOccurrenceAt: "2026-07-23T00:00:00.000Z"
+    };
+
+    await act(async () => {
+      root.render(<NoteList notes={[repeated]} categories={[]} repeatSeries={[makeSeries(4)]} loading={false}
+        onToggleCompleted={vi.fn()} onTogglePinned={vi.fn()} onEdit={vi.fn()}
+        onMove={vi.fn()} onDelete={vi.fn()} />);
+    });
+
+    expect(container.querySelector(".due-badge")).toBeNull();
+    await act(async () => container!.querySelector<HTMLButtonElement>(".expand-button")!.click());
+    expect(container.querySelector(".note-schedule-details")?.textContent).toContain("事项时间未设置");
+    await act(async () => root.unmount());
+  });
+
   it("keeps completed items hidden until the persisted section is enabled and expanded", async () => {
     container = document.createElement("div");
     document.body.append(container);
@@ -202,5 +226,16 @@ function makeNote(id: number, title: string, completed = false): Note {
     reminderEnabled: false, reminderAt: null, reminderOffsetMinutes: 0, reminderTriggeredAt: null,
     boardColumnId: completed ? "completed" : "todo", boardOrder: id * 10,
     status: completed ? "completed" : "todo", previousBoardColumnId: null
+  };
+}
+
+function makeSeries(id: number): RepeatSeries {
+  return {
+    id, title: "每日更新信息", details: null, categoryId: null, priority: "normal",
+    repeatType: "daily", repeatInterval: 1, repeatWeekdays: [], repeatMonthDay: null,
+    startAt: "2026-07-23T00:00:00.000Z", endType: "never", endDate: null,
+    maxOccurrences: null, generatedOccurrences: 1, defaultReminderEnabled: false,
+    defaultReminderTime: null, defaultReminderOffsetMinutes: 0, nextOccurrenceAt: null,
+    active: true, createdAt: "2026-07-23T00:00:00.000Z", updatedAt: "2026-07-23T00:00:00.000Z"
   };
 }

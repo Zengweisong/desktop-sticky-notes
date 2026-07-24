@@ -17,6 +17,8 @@ export interface RepeatSeries {
   maxOccurrences: number | null;
   generatedOccurrences: number;
   defaultReminderEnabled: boolean;
+  /** 每次重复发生当天的本地提醒时间。旧数据会由偏移量换算。 */
+  defaultReminderTime: string | null;
   defaultReminderOffsetMinutes: number;
   nextOccurrenceAt: string | null;
   active: boolean;
@@ -40,6 +42,7 @@ export interface RepeatSeriesRow {
   max_occurrences: number | null;
   generated_occurrences: number;
   default_reminder_enabled: number;
+  default_all_day_reminder_time: string | null;
   default_reminder_offset_minutes: number;
   next_occurrence_at: string | null;
   active: number;

@@ -18,7 +18,7 @@ export function startBackgroundTaskService(
       await ReminderService.checkMissedReminders();
     } catch (error) {
       console.error("后台事项检查失败:", error);
-      onError(error instanceof Error ? error.message : "后台事项检查失败");
+      onError(error instanceof Error ? error.message : String(error || "后台事项检查失败"));
     } finally { running = false; }
   };
   void ReminderService.restorePendingReminders().catch((error) =>
