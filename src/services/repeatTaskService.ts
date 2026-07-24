@@ -8,6 +8,13 @@ const SERIES_FIELDS = `id, title, details, category_id, priority, repeat_type, r
   default_reminder_offset_minutes,
   next_occurrence_at, active, created_at, updated_at`;
 type DatabaseConnection = Awaited<ReturnType<typeof getDatabase>>;
+let seriesMutationTail: Promise<void> = Promise.resolve();
+
+export function withRepeatSeriesMutation<T>(action: () => Promise<T>): Promise<T> {
+  const result = seriesMutationTail.then(action, action);
+  seriesMutationTail = result.then(() => undefined, () => undefined);
+  return result;
+}
 
 export function fromSeriesRow(row: RepeatSeriesRow): RepeatSeries {
   return {
@@ -69,21 +76,27 @@ export async function createRepeatSeries(
         provisional.active ? 1 : 0, now]
   );
   const seriesId = Number(result.lastInsertId);
-  let noteId: number;
-  if (existingNoteId != null) {
-    await db.execute(
+  try {
+    let noteId: number;
+    if (existingNoteId != null) {
+      await db.execute(
         `UPDATE notes SET repeat_series_id = $1, repeat_occurrence_at = $2, scheduled_at = $2,
          reminder_enabled = $3, reminder_offset_minutes = $4, reminder_at = $5,
          reminder_triggered_at = NULL, updated_at = $6 WHERE id = $7`,
         [seriesId, provisional.startAt, provisional.defaultReminderEnabled ? 1 : 0,
-          0, repeatReminderAt(provisional.startAt, provisional.defaultReminderEnabled,
-            provisional.defaultReminderTime), now, existingNoteId]
-    );
-    noteId = existingNoteId;
-  } else {
-    noteId = await insertOccurrence(db, { ...provisional, id: seriesId }, provisional.startAt, now);
+          0, initialRepeatReminderAt(provisional.startAt, provisional.defaultReminderEnabled,
+            provisional.defaultReminderTime, new Date(now)), now, existingNoteId]
+      );
+      noteId = existingNoteId;
+    } else {
+      noteId = await insertOccurrence(db, { ...provisional, id: seriesId }, provisional.startAt, now);
+    }
+    return { seriesId, noteId };
+  } catch (error) {
+    try { await db.execute("DELETE FROM repeat_series WHERE id = $1", [seriesId]); }
+    catch (cleanupError) { console.error("清理未完成的重复系列失败:", cleanupError); }
+    throw error;
   }
-  return { seriesId, noteId };
 }
 
 export async function updateRepeatSeries(
@@ -103,39 +116,102 @@ export async function updateRepeatSeries(
     active: true,
     updatedAt: new Date().toISOString()
   };
-  nextBase.nextOccurrenceAt = calculateNextOccurrence(nextBase, new Date(nextBase.startAt));
+  const scheduleChanged = !sameRepeatSchedule(current, nextBase);
+  if (scheduleChanged) {
+    const anchor = current.nextOccurrenceAt
+      ? new Date(new Date(current.nextOccurrenceAt).getTime() - 1)
+      : new Date();
+    nextBase.nextOccurrenceAt = calculateNextOccurrence(nextBase, anchor);
+  } else {
+    nextBase.nextOccurrenceAt = current.nextOccurrenceAt;
+  }
   nextBase.active = nextBase.nextOccurrenceAt !== null;
-  await (database || await getDatabase()).execute(
+  await writeRepeatSeries(nextBase, database || await getDatabase());
+}
+
+function sameRepeatSchedule(current: RepeatSeries, next: RepeatSeries) {
+  return current.repeatType === next.repeatType &&
+    current.repeatInterval === next.repeatInterval &&
+    current.repeatMonthDay === next.repeatMonthDay &&
+    current.startAt === next.startAt &&
+    current.endType === next.endType &&
+    current.endDate === next.endDate &&
+    current.maxOccurrences === next.maxOccurrences &&
+    current.repeatWeekdays.join(",") === next.repeatWeekdays.join(",");
+}
+
+export async function restoreRepeatSeries(
+  series: RepeatSeries, database?: DatabaseConnection
+): Promise<void> {
+  await writeRepeatSeries(series, database || await getDatabase());
+}
+
+async function writeRepeatSeries(series: RepeatSeries, db: DatabaseConnection) {
+  await db.execute(
     `UPDATE repeat_series SET title=$1, details=$2, category_id=$3, priority=$4, repeat_type=$5,
      repeat_interval=$6, repeat_weekdays=$7, repeat_month_day=$8, start_at=$9, end_type=$10,
      end_date=$11, max_occurrences=$12, default_reminder_enabled=$13,
      default_all_day_reminder_time=$14, default_reminder_offset_minutes=$15,
      next_occurrence_at=$16, active=$17, updated_at=$18 WHERE id=$19`,
-    [nextBase.title, nextBase.details, categoryId, nextBase.priority, nextBase.repeatType,
-      nextBase.repeatInterval, serializeWeekdays(nextBase.repeatWeekdays), nextBase.repeatMonthDay,
-      nextBase.startAt, nextBase.endType, nextBase.endDate, nextBase.maxOccurrences,
-      nextBase.defaultReminderEnabled ? 1 : 0, nextBase.defaultReminderTime,
-      nextBase.defaultReminderOffsetMinutes, nextBase.nextOccurrenceAt,
-      nextBase.active ? 1 : 0, nextBase.updatedAt, seriesId]
+    [series.title, series.details, series.categoryId, series.priority, series.repeatType,
+      series.repeatInterval, serializeWeekdays(series.repeatWeekdays), series.repeatMonthDay,
+      series.startAt, series.endType, series.endDate, series.maxOccurrences,
+      series.defaultReminderEnabled ? 1 : 0, series.defaultReminderTime,
+      series.defaultReminderOffsetMinutes, series.nextOccurrenceAt,
+      series.active ? 1 : 0, series.updatedAt, series.id]
   );
 }
 
-export async function stopRepeatSeries(
+export function stopRepeatSeries(
   seriesId: number, database?: DatabaseConnection
 ): Promise<void> {
+  return withRepeatSeriesMutation(() => stopRepeatSeriesUnlocked(seriesId, database));
+}
+
+async function stopRepeatSeriesUnlocked(seriesId: number, database?: DatabaseConnection) {
   const db = database || await getDatabase();
-  // Existing occurrences remain ordinary independent notes, including their reminders.
-  await db.execute("UPDATE notes SET repeat_series_id = NULL, repeat_occurrence_at = NULL WHERE repeat_series_id = $1", [seriesId]);
+  const noteIds = await listSeriesNoteIds(db, seriesId);
+  // The foreign key detaches occurrences. Delete the series first so a later
+  // cleanup failure can leave only harmless metadata, never a half-detached series.
   await db.execute("DELETE FROM repeat_series WHERE id = $1", [seriesId]);
+  if (noteIds.length) {
+    await db.execute(
+      `UPDATE notes SET repeat_occurrence_at = NULL WHERE id IN (${sqlParameters(noteIds.length)})`, noteIds
+    );
+  }
 }
 
-export async function deleteRepeatSeries(seriesId: number): Promise<void> {
+export function deleteRepeatSeries(seriesId: number): Promise<void> {
+  return withRepeatSeriesMutation(() => deleteRepeatSeriesUnlocked(seriesId));
+}
+
+async function deleteRepeatSeriesUnlocked(seriesId: number) {
   const db = await getDatabase();
-  await db.execute("DELETE FROM notes WHERE repeat_series_id = $1", [seriesId]);
+  const noteIds = await listSeriesNoteIds(db, seriesId);
+  // Deleting the parent first makes failure conservative: occurrences may remain
+  // as ordinary notes, but user data is never deleted while a live series remains.
   await db.execute("DELETE FROM repeat_series WHERE id = $1", [seriesId]);
+  if (noteIds.length) {
+    await db.execute(`DELETE FROM notes WHERE id IN (${sqlParameters(noteIds.length)})`, noteIds);
+  }
 }
 
-export async function setRepeatSeriesActive(seriesId: number, active: boolean): Promise<void> {
+async function listSeriesNoteIds(db: DatabaseConnection, seriesId: number) {
+  const rows = await db.select<Array<{ id: number }>>(
+    "SELECT id FROM notes WHERE repeat_series_id = $1", [seriesId]
+  );
+  return rows.map(({ id }) => id);
+}
+
+function sqlParameters(count: number) {
+  return Array.from({ length: count }, (_, index) => `$${index + 1}`).join(",");
+}
+
+export function setRepeatSeriesActive(seriesId: number, active: boolean): Promise<void> {
+  return withRepeatSeriesMutation(() => setRepeatSeriesActiveUnlocked(seriesId, active));
+}
+
+async function setRepeatSeriesActiveUnlocked(seriesId: number, active: boolean): Promise<void> {
   const current = await getRepeatSeries(seriesId);
   if (!current) throw new Error("重复系列不存在");
   // Resuming starts from the current clock instead of treating cycles missed
@@ -149,7 +225,11 @@ export async function setRepeatSeriesActive(seriesId: number, active: boolean): 
   if (active && !canActivate) throw new Error("该重复系列已达到结束条件");
 }
 
-export async function generateDueOccurrences(now = new Date()): Promise<number> {
+export function generateDueOccurrences(now = new Date()): Promise<number> {
+  return withRepeatSeriesMutation(() => generateDueOccurrencesUnlocked(now));
+}
+
+async function generateDueOccurrencesUnlocked(now: Date): Promise<number> {
   const db = await getDatabase();
   const rows = await db.select<RepeatSeriesRow[]>(
     `SELECT ${SERIES_FIELDS} FROM repeat_series WHERE active = 1 AND next_occurrence_at IS NOT NULL`
@@ -157,7 +237,7 @@ export async function generateDueOccurrences(now = new Date()): Promise<number> 
   let generated = 0;
   for (const row of rows) {
     const series = fromSeriesRow(row);
-    if (!series.nextOccurrenceAt || generationTime(series, series.nextOccurrenceAt) > now) continue;
+    if (!series.nextOccurrenceAt || generationTime(series.nextOccurrenceAt) > now) continue;
 
     // Catch-up policy: consume all missed cycles but materialize only the latest one.
     // This avoids flooding the list after the app has been closed for a long time.
@@ -167,7 +247,7 @@ export async function generateDueOccurrences(now = new Date()): Promise<number> 
     for (let guard = 0; guard < 500; guard += 1) {
       const probe = { ...series, generatedOccurrences: processed };
       const next = calculateNextOccurrence(probe, new Date(cursor));
-      if (!next || generationTime(series, next) > now) break;
+      if (!next || generationTime(next) > now) break;
       latest = next;
       cursor = next;
       processed += 1;
@@ -310,9 +390,8 @@ function normalizeRepeatInput(input: NoteInput): Pick<RepeatSeries,
   };
 }
 
-function generationTime(series: RepeatSeries, occurrenceAt: string) {
-  if (!series.defaultReminderEnabled) return new Date(occurrenceAt);
-  return new Date(repeatReminderAt(occurrenceAt, true, series.defaultReminderTime)!);
+function generationTime(occurrenceAt: string) {
+  return new Date(occurrenceAt);
 }
 
 export function repeatReminderAt(occurrenceAt: string, enabled: boolean, time?: string | null) {
@@ -322,6 +401,13 @@ export function repeatReminderAt(occurrenceAt: string, enabled: boolean, time?: 
   const [hour, minute] = normalizeReminderTime(time).split(":").map(Number);
   const date = new Date(occurrence.getFullYear(), occurrence.getMonth(), occurrence.getDate(), hour, minute, 0, 0);
   return date.toISOString();
+}
+
+function initialRepeatReminderAt(
+  occurrenceAt: string, enabled: boolean, time: string | null, now: Date
+) {
+  const reminderAt = repeatReminderAt(occurrenceAt, enabled, time);
+  return reminderAt && new Date(reminderAt) > now ? reminderAt : null;
 }
 
 async function insertOccurrence(
@@ -335,7 +421,7 @@ async function insertOccurrence(
        (SELECT COALESCE(MAX(sort_order),0)+10 FROM notes WHERE completed=0 AND pinned=0))`,
     [series.title, series.details, series.categoryId, series.priority, occurrenceAt, series.id,
       series.defaultReminderEnabled ? 1 : 0,
-      repeatReminderAt(occurrenceAt, series.defaultReminderEnabled, series.defaultReminderTime),
+      initialRepeatReminderAt(occurrenceAt, series.defaultReminderEnabled, series.defaultReminderTime, new Date(createdAt)),
       0, createdAt]
   );
   return Number(result.lastInsertId);

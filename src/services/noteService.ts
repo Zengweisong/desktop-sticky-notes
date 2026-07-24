@@ -3,7 +3,7 @@ import type { ExportPayloadV2, ExportPayloadV3, Category, CategoryRow } from "..
 import type { ExportPayloadV1, Note, NoteInput, NotePriority, NoteRow, NoteUpdate } from "../types/note";
 import { listCategories } from "./categoryService";
 import { ReminderService } from "./reminderService";
-import { createRepeatSeries, deleteRepeatSeries, getRepeatSeries, listRepeatSeries, repeatReminderAt, setRepeatSeriesActive, stopRepeatSeries, updateRepeatSeries } from "./repeatTaskService";
+import { createRepeatSeries, deleteRepeatSeries, getRepeatSeries, listRepeatSeries, repeatReminderAt, restoreRepeatSeries, setRepeatSeriesActive, stopRepeatSeries, updateRepeatSeries, withRepeatSeriesMutation } from "./repeatTaskService";
 import type { RepeatSeries } from "../types/repeat";
 import { ensureBoardPlacement, setBoardNoteCompleted } from "./boardService";
 import { COMPLETED_COLUMN_ID, TODO_COLUMN_ID } from "../types/board";
@@ -107,7 +107,13 @@ export async function createNote(input: NoteInput): Promise<Note> {
   }
 }
 
-export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
+export function updateNote(id: number, input: NoteUpdate): Promise<void> {
+  return input.repeatEnabled
+    ? withRepeatSeriesMutation(() => updateNoteUnlocked(id, input))
+    : updateNoteUnlocked(id, input);
+}
+
+async function updateNoteUnlocked(id: number, input: NoteUpdate): Promise<void> {
   const title = input.title.trim();
   if (!title) throw new Error("事项标题不能为空");
   try {
@@ -120,10 +126,12 @@ export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
     let reminderEnabled = Boolean(input.reminderEnabled);
     let reminderOffsetMinutes = input.reminderOffsetMinutes ?? 10;
     let computedReminderAt: string | null = null;
+    let seriesBeforeEdit: RepeatSeries | null = null;
     if (input.repeatEnabled) {
-      await ReminderService.cancelReminder(id);
       let seriesId = current.repeatSeriesId;
       if (current.repeatSeriesId != null) {
+        seriesBeforeEdit = await getRepeatSeries(current.repeatSeriesId, db);
+        if (!seriesBeforeEdit) throw new Error("重复系列不存在");
         if (input.repeatEditScope !== "occurrence") {
           await updateRepeatSeries(current.repeatSeriesId, input, categoryId, db);
         }
@@ -131,9 +139,10 @@ export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
         const created = await createRepeatSeries(input, categoryId, id, db);
         seriesId = created.seriesId;
       }
-      const series = seriesId == null ? null : await getRepeatSeries(seriesId, db);
-      const seriesScope = input.repeatEditScope !== "occurrence";
-      scheduledAt = seriesScope ? series?.startAt || scheduledAt : current.repeatOccurrenceAt || current.scheduledAt;
+      const series = seriesBeforeEdit || (seriesId == null ? null : await getRepeatSeries(seriesId, db));
+      scheduledAt = current.repeatSeriesId == null
+        ? series?.startAt || scheduledAt
+        : current.repeatOccurrenceAt || current.scheduledAt;
       reminderEnabled = input.repeatReminderEnabled ?? series?.defaultReminderEnabled ?? true;
       const repeatReminderTime = input.repeatReminderTime || series?.defaultReminderTime || "09:00";
       computedReminderAt = scheduledAt ? repeatReminderAt(scheduledAt, reminderEnabled, repeatReminderTime) : null;
@@ -152,20 +161,29 @@ export async function updateNote(id: number, input: NoteUpdate): Promise<void> {
         ? await ReminderService.updateReminder(id, input)
         : (await ReminderService.cancelReminder(id), null);
     }
-    await db.execute(
-      `UPDATE notes SET content = $1, title = $1, details = $2, category_id = $3,
-       priority = $4, scheduled_at = $5,
-       reminder_triggered_at = CASE
-         WHEN reminder_enabled != $6 OR reminder_at IS NOT $7 THEN NULL ELSE reminder_triggered_at END,
-       reminder_enabled = $6, reminder_at = $7, reminder_offset_minutes = $8,
-       repeat_occurrence_at = CASE
-         WHEN repeat_series_id IS NULL THEN NULL
-         WHEN $9 = 'occurrence' THEN repeat_occurrence_at ELSE $5 END,
-       updated_at = $10 WHERE id = $11`,
-      [title, input.details?.trim() || null, categoryId, input.priority || "normal",
-        scheduledAt, reminderEnabled ? 1 : 0, computedReminderAt,
-        reminderOffsetMinutes, input.repeatEditScope || "series", new Date().toISOString(), id]
-    );
+    try {
+      await db.execute(
+        `UPDATE notes SET content = $1, title = $1, details = $2, category_id = $3,
+         priority = $4, scheduled_at = $5,
+         reminder_triggered_at = CASE
+           WHEN reminder_enabled != $6 OR reminder_at IS NOT $7 THEN NULL ELSE reminder_triggered_at END,
+         reminder_enabled = $6, reminder_at = $7, reminder_offset_minutes = $8,
+         repeat_occurrence_at = CASE
+           WHEN repeat_series_id IS NULL THEN NULL
+           WHEN $9 = 'occurrence' THEN repeat_occurrence_at ELSE $5 END,
+         updated_at = $10 WHERE id = $11`,
+        [title, input.details?.trim() || null, categoryId, input.priority || "normal",
+          scheduledAt, reminderEnabled ? 1 : 0, computedReminderAt,
+          reminderOffsetMinutes, input.repeatEditScope || "series", new Date().toISOString(), id]
+      );
+    } catch (error) {
+      if (seriesBeforeEdit && input.repeatEditScope !== "occurrence") {
+        try { await restoreRepeatSeries(seriesBeforeEdit, db); }
+        catch (restoreError) { console.error("恢复重复系列失败:", restoreError); }
+      }
+      throw error;
+    }
+    if (input.repeatEnabled) await ReminderService.cancelReminder(id);
   } catch (error) {
     console.error("编辑事项失败:", error);
     throw error instanceof Error ? error : new Error("保存编辑失败");
