@@ -17,7 +17,8 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [schedule, setSchedule] = useState<NoteInput>({
-    title: "", priority: "normal", reminderEnabled: false, reminderOffsetMinutes: 10, repeatEnabled: false
+    title: "", priority: "normal", reminderEnabled: false, reminderOffsetMinutes: 10,
+    repeatEnabled: false, repeatReminderEnabled: true, repeatReminderTime: "09:00"
   });
   const composing = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -52,7 +53,8 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
     const ok = await onAdd({ ...schedule, title: value, categoryId });
     if (ok) {
       setValue(""); setAdvancedOpen(false);
-      setSchedule({ title: "", priority: "normal", reminderEnabled: false, reminderOffsetMinutes: 10, repeatEnabled: false });
+      setSchedule({ title: "", priority: "normal", reminderEnabled: false, reminderOffsetMinutes: 10,
+        repeatEnabled: false, repeatReminderEnabled: true, repeatReminderTime: "09:00" });
       inputRef.current?.focus();
     }
     setSubmitting(false);

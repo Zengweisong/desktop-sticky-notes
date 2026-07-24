@@ -13,6 +13,7 @@ interface PendingReminderRow {
   details: string | null;
   category_name: string | null;
   scheduled_at: string | null;
+  repeat_series_id: number | null;
   reminder_at: string;
 }
 
@@ -60,7 +61,8 @@ class ReminderServiceImpl {
   async checkMissedReminders(now = new Date()) {
     const db = await getDatabase();
     const rows = await db.select<PendingReminderRow[]>(
-      `SELECT n.id, n.title, n.details, c.name AS category_name, n.scheduled_at, n.reminder_at
+      `SELECT n.id, n.title, n.details, c.name AS category_name, n.scheduled_at,
+        n.repeat_series_id, n.reminder_at
        FROM notes n LEFT JOIN categories c ON c.id = n.category_id
        WHERE n.reminder_enabled = 1 AND n.completed = 0
          AND n.reminder_triggered_at IS NULL AND n.reminder_at IS NOT NULL AND n.reminder_at <= $1
@@ -93,11 +95,13 @@ class ReminderServiceImpl {
     let granted = await isPermissionGranted();
     if (!granted) granted = (await requestPermission()) === "granted";
     if (!granted) throw new Error("未获得 Windows 通知权限");
-    const itemTime = reminder.scheduled_at ? formatDateTime(reminder.scheduled_at) : "未设置";
+    const timeContext = reminder.repeat_series_id != null
+      ? `重复提醒：${formatDateTime(reminder.reminder_at)}`
+      : `事项时间：${reminder.scheduled_at ? formatDateTime(reminder.scheduled_at) : "未设置"}`;
     const parts = [
       reminder.details?.trim() || "无补充内容",
       `分类：${reminder.category_name || "未分类"}`,
-      `事项时间：${itemTime}`
+      timeContext
     ];
     const body = parts.join("\n");
     try {

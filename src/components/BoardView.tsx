@@ -347,6 +347,7 @@ function BoardCard({ note, categories, dragging, drop, menuOpen, onMenu, onOpen,
   onPointerUp: (event: React.PointerEvent<HTMLButtonElement>) => void; onPointerCancel: () => void;
 }) {
   const category = categories.find((item) => item.id === note.categoryId);
+  const hasItemTime = Boolean(note.scheduledAt && note.repeatSeriesId == null);
   return <article className={`board-card ${note.completed ? "completed" : ""} ${dragging ? "drag-placeholder" : ""} ${drop ? `drop-${drop}` : ""}`}
     data-note-id={note.id} onClick={onOpen}>
     {note.priority === "high" && <i className="high-priority-mark" />}
@@ -365,9 +366,9 @@ function BoardCard({ note, categories, dragging, drop, menuOpen, onMenu, onOpen,
         </div>}
       </div>
     </div>
-    {(category || note.scheduledAt || note.reminderAt || note.priority !== "normal") && <div className="board-card-meta">
+    {(category || hasItemTime || note.reminderAt || note.priority !== "normal") && <div className="board-card-meta">
       {category && <span className="board-tag"><i style={{ backgroundColor: category.color }} />{category.name}</span>}
-      {note.scheduledAt && <span title="事项时间"><CalendarClock size={10} />{shortDate(note.scheduledAt)}</span>}
+      {hasItemTime && <span title="事项时间"><CalendarClock size={10} />{shortDate(note.scheduledAt!)}</span>}
       {note.reminderEnabled && note.reminderAt && <span title="提醒时间"><Bell size={10} />{shortDate(note.reminderAt)}</span>}
       {note.priority !== "normal" && <span>{note.priority === "high" ? "高" : "低"}</span>}
     </div>}

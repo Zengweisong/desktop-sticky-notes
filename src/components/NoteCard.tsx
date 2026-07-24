@@ -93,6 +93,7 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
   };
   const toggle = async (action: () => Promise<boolean>) => { if (busy) return; setBusy(true); await action(); setBusy(false); };
   const category = categories.find((item) => item.id === note.categoryId);
+  const hasItemTime = Boolean(note.scheduledAt && note.repeatSeriesId == null);
 
   return <article className={`note-card ${note.completed ? "completed" : ""} ${isNew ? "note-enter" : ""} ${dragging ? "dragging" : ""} ${dropPosition ? `drop-${dropPosition}` : ""}`}
     data-note-id={note.id} style={{ "--drag-offset-y": `${dragOffsetY}px` } as React.CSSProperties}>
@@ -133,12 +134,12 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
         <div className="note-meta">
           {category && <span className="category-badge" title={category.name}><i style={{ backgroundColor: category.color }} />{category.name}</span>}
           {note.priority !== "normal" && <span className={`priority-badge ${note.priority}`}>{note.priority === "high" ? "高优先级" : "低优先级"}</span>}
-          {note.scheduledAt && <span className={`due-badge ${isPlanPast(note) ? "overdue" : ""}`}><Calendar size={11} />{formatPlanTime(note)}</span>}
+          {hasItemTime && <span className={`due-badge ${isPlanPast(note) ? "overdue" : ""}`}><Calendar size={11} />{formatPlanTime(note)}</span>}
           {repeatSeries && <span className="repeat-badge"><Repeat2 size={11} />{describeRepeat(repeatSeries)}</span>}
           {reminderVisible && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
         </div>
         {expanded && (reminderVisible || repeatSeries) && <div className="note-schedule-details">
-          <div><b>事项时间</b><span>{note.scheduledAt ? formatPlanTime(note) : "未设置"}</span></div>
+          <div><b>事项时间</b><span>{hasItemTime ? formatPlanTime(note) : "未设置"}</span></div>
           {reminderVisible && <div><b>提醒</b><span>{formatReminder(note, Boolean(repeatSeries))}</span></div>}
           <div><b>重复规则</b><span>{repeatSeries ? `${describeRepeat(repeatSeries)} · ${repeatSeries.active ? "进行中" : "已暂停"}` : "不重复"}</span></div>
           {repeatSeries && onToggleRepeatActive && <button className="repeat-pause-button" disabled={busy}
@@ -167,12 +168,13 @@ export function isUpcomingReminder(note: Note, now = Date.now()) {
 }
 
 function scheduleFrom(note: Note, series?: RepeatSeries): NoteUpdate {
+  const repeatStartDate = series ? localDatePart(series.startAt) : undefined;
   return {
     title: note.title,
     scheduledAt: note.scheduledAt,
-    reminderEnabled: note.reminderEnabled,
-    reminderOffsetMinutes: note.reminderOffsetMinutes,
-    legacyReminderAt: isLegacyReminder(note) ? note.reminderAt : null,
+    reminderEnabled: series ? false : note.reminderEnabled,
+    reminderOffsetMinutes: series ? 10 : note.reminderOffsetMinutes,
+    legacyReminderAt: !series && isLegacyReminder(note) ? note.reminderAt : null,
     repeatEnabled: Boolean(series),
     repeatType: series?.repeatType || "daily",
     repeatInterval: series?.repeatInterval || 1,
@@ -181,17 +183,15 @@ function scheduleFrom(note: Note, series?: RepeatSeries): NoteUpdate {
     repeatEndType: series?.endType || "never",
     repeatEndDate: series?.endDate,
     repeatMaxOccurrences: series?.maxOccurrences,
+    repeatStartDate,
+    repeatReminderEnabled: series?.defaultReminderEnabled ?? true,
+    repeatReminderTime: series?.defaultReminderTime || "09:00",
     repeatEditScope: series ? "occurrence" : "series"
   };
 }
 
 function formatReminder(note: Note, recurring: boolean) {
-  if (recurring) {
-    if (note.reminderOffsetMinutes === 0) return "准时提醒";
-    if (note.reminderOffsetMinutes === 60) return "提前 1 小时";
-    if (note.reminderOffsetMinutes === 1440) return "提前 1 天";
-    return `提前 ${note.reminderOffsetMinutes} 分钟`;
-  }
+  if (recurring) return `${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(note.reminderAt!))} 提醒`;
   return formatFullDateTime(note.reminderAt!);
 }
 
@@ -212,4 +212,10 @@ function formatFullDateTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
     month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"
   }).format(new Date(value));
+}
+
+function localDatePart(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

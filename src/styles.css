@@ -24,10 +24,10 @@
   --type-meta: 12px;
   --type-filter: 15px;
   --line-height-ui: 1.4;
-  --form-control-height: 50px;
-  --form-column-gap: 14px;
-  --form-panel-padding: 20px;
-  --control-radius: 12px;
+  --form-control-height: 40px;
+  --form-column-gap: 10px;
+  --form-panel-padding: 18px;
+  --control-radius: 9px;
 }
 
 * { box-sizing: border-box; }
@@ -36,8 +36,8 @@ button, textarea, input, select { font: inherit; }
 button { color: inherit; -webkit-tap-highlight-color: transparent; }
 button, [role="button"] { user-select: none; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 72%, white);
-  outline-offset: 2px;
+  outline: 1px solid color-mix(in srgb, var(--accent) 72%, white);
+  outline-offset: 1px;
 }
 button:active:not(:disabled) { transform: scale(.965); transition-duration: 80ms !important; }
 
@@ -337,11 +337,11 @@ textarea::placeholder, input::placeholder {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  max-height: min(380px, calc(100vh - 164px));
+  max-height: none;
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: visible;
   margin: 0;
-  padding: 18px var(--form-panel-padding) 28px;
+  padding: 14px var(--form-panel-padding) 16px;
   border-top: 1px solid var(--separator);
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--muted) 32%, transparent) transparent;
@@ -754,7 +754,7 @@ textarea::placeholder, input::placeholder {
   overflow-x: hidden;
 }
 .note-edit-form textarea, .note-edit-fields select, .note-edit-fields input, .schedule-grid input, .schedule-grid select,
-.repeat-edit-scope select, .schedule-control-row select, .priority-setting select, .reminder-options > select,
+.repeat-edit-scope select, .schedule-control-row select, .repeat-end-setting select, .priority-setting select, .reminder-options > select,
 .custom-offset-row input, .custom-offset-row select {
   width: 100%;
   max-width: 100%;
@@ -780,7 +780,7 @@ textarea::placeholder, input::placeholder {
 .note-edit-form textarea:first-child { font-size: var(--font-lg); font-weight: 620; letter-spacing: -.012em; }
 .note-edit-form textarea { resize: vertical; }
 .note-edit-form textarea:focus, .note-edit-fields select:focus, .note-edit-fields input:focus, .schedule-grid input:focus,
-.schedule-grid select:focus, .schedule-control-row select:focus, .priority-setting select:focus, .reminder-options > select:focus,
+.schedule-grid select:focus, .schedule-control-row select:focus, .repeat-end-setting select:focus, .priority-setting select:focus, .reminder-options > select:focus,
 .custom-offset-row input:focus, .custom-offset-row select:focus {
   border-color: var(--accent);
   background: rgba(var(--input-rgb), .92);
@@ -822,10 +822,20 @@ textarea::placeholder, input::placeholder {
   padding-top: 0;
   overflow-x: hidden;
 }
+.task-schedule-fields.compact {
+  --form-control-height: 40px;
+  --form-column-gap: 10px;
+  --control-radius: 9px;
+  --type-section-title: 15px;
+  --type-field-label: 13px;
+  --type-control: 13px;
+  --type-placeholder: 12px;
+  --type-meta: 12px;
+}
 .schedule-primary-section {
   width: 100%;
   min-width: 0;
-  padding: 0 0 18px;
+  padding: 0 0 14px;
   border-bottom: 1px solid var(--separator);
 }
 .schedule-primary-row {
@@ -834,7 +844,7 @@ textarea::placeholder, input::placeholder {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(132px, .65fr);
   align-items: center;
-  gap: 18px;
+  gap: 12px;
 }
 .primary-setting {
   min-width: 0;
@@ -861,7 +871,7 @@ textarea::placeholder, input::placeholder {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 18px 0 10px;
+  padding: 14px 0 8px;
   color: var(--text);
   font-size: var(--type-section-title);
   font-weight: 600;
@@ -869,7 +879,7 @@ textarea::placeholder, input::placeholder {
 }
 .task-schedule-fields svg { width: 19px; height: 19px; }
 .schedule-title svg, .schedule-control-row > span svg, .reminder-heading > span svg { color: var(--accent); }
-.schedule-block { width: 100%; max-width: 100%; min-width: 0; padding: 16px 0; border-top: 1px solid var(--separator); }
+.schedule-block { width: 100%; max-width: 100%; min-width: 0; padding: 12px 0; border-top: 1px solid var(--separator); }
 .schedule-block:first-of-type { border-top: 0; padding-top: 0; }
 .schedule-title + .schedule-block { border-top: 0; padding-top: 0; }
 .schedule-label { margin-bottom: 8px; color: var(--text); font-size: var(--type-field-label); font-weight: 600; line-height: var(--line-height-ui); }
@@ -904,9 +914,13 @@ textarea::placeholder, input::placeholder {
   font-size: var(--type-field-label); font-weight: 600; line-height: var(--line-height-ui);
 }
 .schedule-control-row select { justify-self: stretch; }
-.schedule-grid { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 14px; margin: 10px 0 0; padding-left: 0; }
-.schedule-grid label { min-width: 0; display: grid; gap: 4px; }
-.schedule-grid label > span, .weekday-picker > span { color: var(--faint); font-size: var(--type-meta); font-weight: 400; line-height: var(--line-height-ui); }
+.repeat-main-row.active { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--form-column-gap); }
+.repeat-main-row.active .schedule-control-row, .repeat-end-setting { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); align-items: end; gap: 6px; }
+.repeat-end-setting > span { color: var(--text); font-size: var(--type-field-label); font-weight: 600; line-height: var(--line-height-ui); }
+.repeat-main-row select, .repeat-end-setting select { width: 100%; min-width: 0; }
+.schedule-grid { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin: 10px 0 0; padding-left: 0; }
+.schedule-grid label, .schedule-grid .field-setting { min-width: 0; display: grid; gap: 6px; }
+.schedule-grid label > span, .schedule-grid .field-setting > span, .weekday-picker > span { color: var(--faint); font-size: var(--type-meta); font-weight: 400; line-height: var(--line-height-ui); }
 .schedule-grid .wide { grid-column: 1 / -1; }
 .weekday-picker { display: grid; gap: 5px; }
 .weekday-picker > div { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
@@ -946,6 +960,19 @@ textarea::placeholder, input::placeholder {
 .reminder-details-title { color: var(--text); font-size: var(--type-field-label); font-weight: 600; line-height: var(--line-height-ui); }
 .reminder-details-block .reminder-options { margin-top: 0; }
 .reminder-details-block .schedule-message, .reminder-details-block .reminder-preview { grid-column: 2; }
+.repeat-reminder-setting {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(178px, .9fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--separator) 58%, transparent);
+}
+.repeat-reminder-setting.time-only { grid-template-columns: minmax(0, 250px); }
+.repeat-reminder-time { min-width: 0; display: grid; grid-template-columns: auto minmax(116px, 1fr); align-items: center; gap: 9px; }
+.repeat-reminder-time > span { color: var(--text); font-size: var(--type-field-label); font-weight: 600; white-space: nowrap; }
 .note-edit-form .task-schedule-fields { grid-column: 1 / -1; }
 
 /* Desktop note editor: keep the shared scheduling behavior, but use a denser local scale. */
@@ -972,6 +999,7 @@ textarea::placeholder, input::placeholder {
 .note-edit-form .schedule-grid select,
 .note-edit-form .repeat-edit-scope select,
 .note-edit-form .schedule-control-row select,
+.note-edit-form .repeat-end-setting select,
 .note-edit-form .priority-setting select,
 .note-edit-form .reminder-options > select,
 .note-edit-form .custom-offset-row input,
@@ -1322,6 +1350,8 @@ footer button:hover { color: var(--accent-strong); }
   }
   .primary-setting { justify-content: space-between; }
   .priority-setting select { width: min(180px, 64%); margin-left: 0; }
+  .repeat-main-row.active, .repeat-reminder-setting { grid-template-columns: minmax(0, 1fr); }
+  .repeat-reminder-setting.time-only { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 350px) {

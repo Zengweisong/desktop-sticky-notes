@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { calculateNextOccurrence } from "./repeatTaskService";
+import { calculateNextOccurrence, fromSeriesRow, repeatReminderAt } from "./repeatTaskService";
+import type { RepeatSeriesRow } from "../types/repeat";
 import type { RepeatSeries } from "../types/repeat";
 
 describe("repeat occurrence calculation", () => {
@@ -36,6 +37,25 @@ describe("repeat occurrence calculation", () => {
       endType: "date", endDate: "2026-07-20"
     }), start)).toBeNull();
   });
+
+  it("uses a fixed local reminder time instead of an ordinary reminder offset", () => {
+    const occurrence = local(2026, 7, 22, 0, 0);
+    expectLocal(repeatReminderAt(occurrence.toISOString(), true, "09:00"), 2026, 7, 22, 9, 0);
+    expect(repeatReminderAt(occurrence.toISOString(), false, "09:00")).toBeNull();
+  });
+
+  it("derives an independent reminder time for legacy repeat series", () => {
+    const start = local(2026, 7, 22, 10, 0);
+    const row: RepeatSeriesRow = {
+      id: 1, title: "旧重复事项", details: null, category_id: 1, priority: "normal",
+      repeat_type: "daily", repeat_interval: 1, repeat_weekdays: null, repeat_month_day: null,
+      start_at: start.toISOString(), end_type: "never", end_date: null, max_occurrences: null,
+      generated_occurrences: 1, default_reminder_enabled: 1, default_all_day_reminder_time: null,
+      default_reminder_offset_minutes: 60, next_occurrence_at: null, active: 1,
+      created_at: start.toISOString(), updated_at: start.toISOString()
+    };
+    expect(fromSeriesRow(row).defaultReminderTime).toBe("09:00");
+  });
 });
 
 function series(type: RepeatSeries["repeatType"], start: Date, patch: Partial<RepeatSeries> = {}): RepeatSeries {
@@ -43,7 +63,7 @@ function series(type: RepeatSeries["repeatType"], start: Date, patch: Partial<Re
     id: 1, title: "测试事项", details: null, categoryId: null, priority: "normal",
     repeatType: type, repeatInterval: 1, repeatWeekdays: [], repeatMonthDay: null,
     startAt: start.toISOString(), endType: "never", endDate: null, maxOccurrences: null,
-    generatedOccurrences: 1, defaultReminderEnabled: false, defaultReminderOffsetMinutes: 0,
+    generatedOccurrences: 1, defaultReminderEnabled: false, defaultReminderTime: null, defaultReminderOffsetMinutes: 0,
     nextOccurrenceAt: null, active: true, createdAt: start.toISOString(), updatedAt: start.toISOString(),
     ...patch
   };
