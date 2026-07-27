@@ -2,7 +2,7 @@ import type { NoteTimeFilter } from "./filter";
 
 export type ThemeName = "warm" | "light" | "dark";
 export type FontSizePreference = "small" | "medium" | "large";
-export type ViewMode = "list" | "board";
+export type ViewMode = "list" | "board" | "calendar";
 export type PriorityFilter = "all" | "low" | "normal" | "high";
 
 export interface WindowState {
@@ -33,6 +33,7 @@ export interface AppSettings {
   window: WindowState;
   listWindow: WindowState;
   boardWindow: WindowState;
+  calendarWindow: WindowState;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -63,5 +64,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   boardWindow: {
     x: null, y: null, width: 820, height: 620, maximized: false, scaleFactor: 1
+  },
+  calendarWindow: {
+    x: null, y: null, width: 820, height: 700, maximized: false, scaleFactor: 1
   }
 };

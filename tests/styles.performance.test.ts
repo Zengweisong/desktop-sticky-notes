@@ -68,3 +68,15 @@ describe("schedule form layout", () => {
     expect(smallestRule).toContain("grid-template-columns: minmax(0, 1fr)");
   });
 });
+
+describe("Markdown list markers", () => {
+  it("restores unordered and ordered markers after the Tailwind reset", () => {
+    const unorderedRule = css.match(/(?:^|\n)\.markdown-content ul\s*\{([^}]*)\}/)?.[1] ?? "";
+    const orderedRule = css.match(/(?:^|\n)\.markdown-content ol\s*\{([^}]*)\}/)?.[1] ?? "";
+    const taskRule = css.match(/\.markdown-content \.contains-task-list\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(unorderedRule).toContain("list-style: disc");
+    expect(orderedRule).toContain("list-style: decimal");
+    expect(taskRule).toContain("list-style: none");
+  });
+});

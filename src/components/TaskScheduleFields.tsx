@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from "react";
-import { Bell, CalendarDays, Clock3, Repeat2 } from "lucide-react";
+import { Bell, CalendarDays, Clock3, Repeat2, X } from "lucide-react";
 import type { NoteInput, NotePriority } from "../types/note";
 import type { RepeatType } from "../types/repeat";
+import { scheduledAtFromParts } from "../services/noteDateService";
 
 interface Props {
   value: NoteInput;
@@ -22,9 +23,10 @@ type OffsetUnit = "minutes" | "hours" | "days";
 export function TaskScheduleFields({ value, onChange, compact = false, priority, onPriorityChange }: Props) {
   const [hint, setHint] = useState("");
   const derived = useMemo(() => planParts(value.scheduledAt), [value.scheduledAt]);
-  const planDate = value.planDate ?? derived.date;
-  const planTime = value.planTime ?? derived.time;
-  const hasPlan = Boolean(value.scheduledAt && !Number.isNaN(new Date(value.scheduledAt).getTime()));
+  const planDate = value.scheduledDate !== undefined ? value.scheduledDate || "" : value.planDate ?? derived.date;
+  const planTime = value.scheduledTime !== undefined ? value.scheduledTime || "" : value.planTime ?? derived.time;
+  const hasPlanTime = Boolean(planDate && planTime && value.scheduledAt
+    && !Number.isNaN(new Date(value.scheduledAt).getTime()));
   const repeatEnabled = Boolean(value.repeatEnabled);
   const oneTimeReminderEnabled = Boolean(value.reminderEnabled);
   const repeatReminderEnabled = value.repeatReminderEnabled ?? repeatEnabled;
@@ -44,10 +46,18 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
   const showPrimaryRow = priority != null && onPriorityChange != null;
 
   const patchPlan = (date: string, time: string) => {
-    const scheduledAt = buildScheduledAt(date, time);
+    const nextDate = date || null;
+    const nextTime = nextDate && time ? time : null;
+    const scheduledAt = buildScheduledAt(nextDate || "", nextTime || "");
+    if (nextDate && nextTime && !scheduledAt) {
+      setHint("所选本地时间不存在，请选择其他时间");
+      return;
+    }
     onChange({
-      planDate: date,
-      planTime: time,
+      planDate: nextDate || "",
+      planTime: nextTime || "",
+      scheduledDate: nextDate,
+      scheduledTime: nextTime,
       scheduledAt,
       reminderEnabled: scheduledAt ? value.reminderEnabled : false,
       legacyReminderAt: null
@@ -80,7 +90,7 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
       onChange({ reminderEnabled: false });
       return;
     }
-    if (!hasPlan) { setHint("请先设置事项时间"); return; }
+    if (!hasPlanTime) { setHint("请先设置具体时间"); return; }
     setHint("");
     onChange({
       reminderEnabled: true,
@@ -101,8 +111,8 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
         <div className="primary-setting primary-reminder">
           <span><Bell size={18} />{repeatEnabled ? "重复提醒" : "提醒"}</span>
           <button type="button" role="switch" aria-label={repeatEnabled ? "重复提醒" : "提醒"} aria-checked={activeReminderEnabled}
-            aria-disabled={!repeatEnabled && !hasPlan && !oneTimeReminderEnabled}
-            className={`switch-control ${activeReminderEnabled ? "on" : ""} ${!repeatEnabled && !hasPlan && !oneTimeReminderEnabled ? "disabled" : ""}`}
+            aria-disabled={!repeatEnabled && !hasPlanTime && !oneTimeReminderEnabled}
+            className={`switch-control ${activeReminderEnabled ? "on" : ""} ${!repeatEnabled && !hasPlanTime && !oneTimeReminderEnabled ? "disabled" : ""}`}
             onClick={toggleReminder}><i /></button>
         </div>
       </div>
@@ -116,8 +126,8 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
       <div className="plan-time-row">
         <PickerInput type="date" value={planDate} placeholder="选择日期" icon="date"
           onChange={(next) => patchPlan(next, planTime)} />
-        <PickerInput type="time" value={planTime} placeholder="选择时间" icon="time"
-          onChange={(next) => patchPlan(planDate, next)} />
+        <PickerInput type="time" value={planTime} placeholder="添加时间" icon="time" clearable
+          onChange={(next) => patchPlan(planDate || localDate(new Date()), next)} />
       </div>
     </section>}
 
@@ -183,11 +193,11 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
     {!repeatEnabled && !showPrimaryRow && <section className="schedule-block reminder-block">
       <div className="reminder-heading">
         <span><Bell size={13} />提醒</span>
-        <button type="button" role="switch" aria-label="提醒" aria-checked={oneTimeReminderEnabled} aria-disabled={!hasPlan && !oneTimeReminderEnabled}
-          className={`switch-control ${oneTimeReminderEnabled ? "on" : ""} ${!hasPlan && !oneTimeReminderEnabled ? "disabled" : ""}`}
+        <button type="button" role="switch" aria-label="提醒" aria-checked={oneTimeReminderEnabled} aria-disabled={!hasPlanTime && !oneTimeReminderEnabled}
+          className={`switch-control ${oneTimeReminderEnabled ? "on" : ""} ${!hasPlanTime && !oneTimeReminderEnabled ? "disabled" : ""}`}
           onClick={toggleReminder}><i /></button>
       </div>
-      {!hasPlan && <p className="schedule-message">选择事项时间后可设置提醒</p>}
+      {!hasPlanTime && <p className="schedule-message">添加具体时间后可设置提醒</p>}
       {oneTimeReminderEnabled && <div className="reminder-options">
           <select aria-label="提醒方式" value={legacyReminder ? "legacy" : customOffset ? "custom" : String(offset)} onChange={(event) => {
             const next = event.target.value;
@@ -241,13 +251,13 @@ export function TaskScheduleFields({ value, onChange, compact = false, priority,
   </div>;
 }
 
-function PickerInput({ type, value, placeholder, icon, disabled, onChange }: {
+function PickerInput({ type, value, placeholder, icon, disabled, clearable = false, onChange }: {
   type: "date" | "time"; value: string; placeholder: string; icon: "date" | "time";
-  disabled?: boolean; onChange: (value: string) => void;
+  disabled?: boolean; clearable?: boolean; onChange: (value: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const text = value ? (type === "date" ? formatLocalDate(value) : value) : placeholder;
-  return <label className={`picker-input ${disabled ? "disabled" : ""}`} onClick={(event) => {
+  return <div className={`picker-input ${disabled ? "disabled" : ""}`} onClick={(event) => {
     const input = inputRef.current;
     if (!input || disabled || typeof input.showPicker !== "function") return;
     try {
@@ -260,7 +270,9 @@ function PickerInput({ type, value, placeholder, icon, disabled, onChange }: {
     <span className={value ? "" : "placeholder"}>{text}</span>
     <input ref={inputRef} type={type} value={value} disabled={disabled} step={type === "time" ? 60 : undefined}
       aria-label={placeholder} onChange={(event) => onChange(event.target.value)} />
-  </label>;
+    {clearable && value && <button type="button" className="picker-clear" aria-label="清除具体时间"
+      onClick={(event) => { event.stopPropagation(); onChange(""); }}><X size={12} /></button>}
+  </div>;
 }
 
 export function toLocalDateTimeInput(value?: string | null) {
@@ -272,9 +284,7 @@ export function toLocalDateTimeInput(value?: string | null) {
 }
 
 export function buildScheduledAt(date: string, time: string) {
-  if (!date || !time) return null;
-  const parsed = new Date(`${date}T${time}:00`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return scheduledAtFromParts(date, time);
 }
 
 function planParts(value?: string | null) {

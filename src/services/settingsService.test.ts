@@ -63,4 +63,12 @@ describe("normalizeSettings", () => {
       completedSectionExpanded: true
     });
   });
+
+  it("persists calendar view and supplies its dedicated window state", () => {
+    expect(normalizeSettings({ viewMode: "calendar" })).toMatchObject({
+      viewMode: "calendar",
+      calendarWindow: DEFAULT_SETTINGS.calendarWindow
+    });
+    expect(normalizeSettings({ viewMode: "unknown" })).toMatchObject({ viewMode: "list" });
+  });
 });

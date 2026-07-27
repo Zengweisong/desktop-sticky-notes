@@ -10,6 +10,7 @@ import { CategoryNav } from "./components/CategoryNav";
 import { CustomTitleBar } from "./components/CustomTitleBar";
 import { NoteList } from "./components/NoteList";
 import { BoardView } from "./components/BoardView";
+import { CalendarView } from "./components/CalendarView";
 import { QuickInput } from "./components/QuickInput";
 import { SettingsDrawer } from "./components/SettingsDrawer";
 import { Toast, type ToastItem } from "./components/Toast";
@@ -30,7 +31,7 @@ import { useSettingsStore } from "./stores/settingsStore";
 import type { NoteTimeFilter } from "./types/filter";
 import { filterNotes } from "./services/noteFilterService";
 import { TODO_COLUMN_ID } from "./types/board";
-import type { ViewMode } from "./types/settings";
+import type { AppSettings, ViewMode, WindowState } from "./types/settings";
 
 export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -83,9 +84,9 @@ export default function App() {
           theme: current.theme,
           alwaysOnTop: current.alwaysOnTop
         });
-        const savedForView = current.viewMode === "board" ? current.boardWindow : current.listWindow;
+        const savedForView = windowForView(current, current.viewMode);
         const restoredWindow = await restoreWindowState(win, savedForView);
-        const viewPatch = current.viewMode === "board" ? { boardWindow: restoredWindow } : { listWindow: restoredWindow };
+        const viewPatch = windowPatchForView(current.viewMode, restoredWindow);
         const restoredSettings = { ...current, ...viewPatch, window: restoredWindow };
         useSettingsStore.getState().patchSettings({ ...viewPatch, window: restoredWindow });
         await saveSettings(restoredSettings);
@@ -187,7 +188,7 @@ export default function App() {
       useSettingsStore.getState().settings.window,
       async (windowState) => {
         const current = useSettingsStore.getState().settings;
-        const viewPatch = current.viewMode === "board" ? { boardWindow: windowState } : { listWindow: windowState };
+        const viewPatch = windowPatchForView(current.viewMode, windowState);
         const next = { ...current, ...viewPatch, window: windowState };
         useSettingsStore.getState().patchSettings({ ...viewPatch, window: windowState });
         await saveSettings(next);
@@ -266,11 +267,11 @@ export default function App() {
     if (current.viewMode === viewMode) return;
     await windowStateManager.current?.flush();
     const latest = useSettingsStore.getState().settings;
-    const target = viewMode === "board" ? latest.boardWindow : latest.listWindow;
+    const target = windowForView(latest, viewMode);
     useSettingsStore.getState().patchSettings({ viewMode });
     try {
       const restored = await restoreWindowState(win, target);
-      const viewPatch = viewMode === "board" ? { boardWindow: restored } : { listWindow: restored };
+      const viewPatch = windowPatchForView(viewMode, restored);
       const next = { ...useSettingsStore.getState().settings, ...viewPatch, viewMode, window: restored };
       useSettingsStore.getState().patchSettings({ ...viewPatch, viewMode, window: restored });
       await saveSettings(next);
@@ -294,7 +295,7 @@ export default function App() {
 
   return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize} view-${prefs.settings.viewMode} ${(settingsOpen || categoriesOpen) ? "overlay-open" : ""}`}
     style={{ "--panel-opacity": String(prefs.settings.opacity / 100) } as React.CSSProperties}>
-    <section className={`panel ${prefs.settings.viewMode === "board" ? "board-mode" : ""}`}>
+    <section className={`panel ${prefs.settings.viewMode === "board" ? "board-mode" : ""} ${prefs.settings.viewMode === "calendar" ? "calendar-mode" : ""}`}>
       <CustomTitleBar alwaysOnTop={prefs.settings.alwaysOnTop} onToggleTop={toggleAlwaysOnTop}
         onOpenSettings={() => { setCategoriesOpen(false); setSettingsOpen(true); }} />
       <div className="quick-area"><QuickInput categories={categories.categories} categoryId={quickCategoryId}
@@ -321,7 +322,7 @@ export default function App() {
               onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)} onEdit={notes.edit}
               onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
               onMove={notes.move} onDelete={notes.remove} />
-          </div> : <BoardView columns={board.columns} notes={visibleNotes} categories={categories.categories}
+          </div> : prefs.settings.viewMode === "board" ? <BoardView columns={board.columns} notes={visibleNotes} categories={categories.categories}
             repeatSeries={notes.repeatSeries} loading={notes.loading || categories.loading || board.loading}
             selectedColumnId={selectedBoardColumnId} onSelectedColumnChange={setSelectedBoardColumnId}
             onAdd={notes.add} onEdit={notes.edit}
@@ -329,11 +330,20 @@ export default function App() {
             onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)}
             onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
             onDelete={notes.remove} onMoveNote={board.moveNote} onCreateColumn={board.create}
-            onRenameColumn={board.rename} onDeleteColumn={board.remove} onMoveColumn={board.reorder} />}
+            onRenameColumn={board.rename} onDeleteColumn={board.remove} onMoveColumn={board.reorder} />
+          : <CalendarView notes={notes.notes} categories={categories.categories} repeatSeries={notes.repeatSeries}
+            loading={notes.loading || categories.loading} defaultCategoryId={quickCategoryId}
+            timeFilter={prefs.settings.taskTimeFilter} categoryId={prefs.settings.taskCategoryFilterId}
+            search={prefs.settings.taskSearch} priority={prefs.settings.taskPriorityFilter}
+            onAdd={notes.add} onEdit={notes.edit}
+            onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
+            onTogglePinned={(note) => notes.togglePinned(note.id, !note.pinned)}
+            onToggleRepeatActive={(series) => notes.toggleRepeatActive(series.id, !series.active)}
+            onDelete={notes.remove} onReschedule={notes.reschedule} />}
         </div>
       </div>
       <footer><span>{filtersActive
-        ? `显示 ${prefs.settings.viewMode === "board" ? visibleNotes.length : visibleListCount} 项 · 共 ${prefs.settings.viewMode === "board" ? notes.notes.length : activeTotal + (prefs.settings.showCompleted ? completedTotal : 0)} 项`
+        ? `显示 ${prefs.settings.viewMode !== "list" ? visibleNotes.length : visibleListCount} 项 · 共 ${prefs.settings.viewMode !== "list" ? notes.notes.length : activeTotal + (prefs.settings.showCompleted ? completedTotal : 0)} 项`
         : `${activeTotal} 项待办 · ${completedTotal} 项已完成`}</span>
         <button onClick={() => { setCategoriesOpen(false); setSettingsOpen(true); }}>个性化</button></footer>
     </section>
@@ -346,4 +356,16 @@ export default function App() {
     <Toast items={toasts} onDismiss={(id) => setToasts((items) => items.filter((item) => item.id !== id))} />
     <WindowResizeHandles />
   </main>;
+}
+
+function windowForView(settings: AppSettings, viewMode: ViewMode) {
+  if (viewMode === "board") return settings.boardWindow;
+  if (viewMode === "calendar") return settings.calendarWindow;
+  return settings.listWindow;
+}
+
+function windowPatchForView(viewMode: ViewMode, windowState: WindowState): Partial<AppSettings> {
+  if (viewMode === "board") return { boardWindow: windowState };
+  if (viewMode === "calendar") return { calendarWindow: windowState };
+  return { listWindow: windowState };
 }

@@ -7,15 +7,22 @@ import { createRepeatSeries, deleteRepeatSeries, getRepeatSeries, listRepeatSeri
 import type { RepeatSeries } from "../types/repeat";
 import { ensureBoardPlacement, setBoardNoteCompleted } from "./boardService";
 import { COMPLETED_COLUMN_ID, TODO_COLUMN_ID } from "../types/board";
+import { normalizedSchedule, schedulePartsFromIso, scheduledAtFromParts } from "./noteDateService";
 
 const SELECT_FIELDS = `id, title, content, details, category_id, completed, pinned, priority,
-  created_at, updated_at, completed_at, due_at, sort_order, scheduled_at, repeat_series_id,
+  created_at, updated_at, completed_at, due_at, sort_order, scheduled_at, scheduled_date, scheduled_time,
+  is_all_day, repeat_series_id,
   repeat_occurrence_at, reminder_enabled, reminder_at, reminder_offset_minutes, reminder_triggered_at,
   board_column_id, board_order, status, previous_board_column_id`;
 const ORDER_BY = `ORDER BY CASE WHEN completed = 0 AND pinned = 1 THEN 0 WHEN completed = 0 THEN 1 ELSE 2 END,
   sort_order DESC, created_at DESC`;
 
 function fromRow(row: NoteRow): Note {
+  const legacySchedule = schedulePartsFromIso(row.scheduled_at);
+  const scheduledDate = row.scheduled_date ?? legacySchedule.date;
+  const scheduledTime = row.scheduled_time === undefined
+    ? (row.repeat_series_id == null && !row.is_all_day ? legacySchedule.time : null)
+    : row.scheduled_time;
   return {
     id: row.id,
     title: (row.title || row.content).trim(),
@@ -30,6 +37,8 @@ function fromRow(row: NoteRow): Note {
     dueAt: row.due_at,
     sortOrder: row.sort_order,
     scheduledAt: row.scheduled_at ?? null,
+    scheduledDate,
+    scheduledTime,
     repeatSeriesId: row.repeat_series_id ?? null,
     repeatOccurrenceAt: row.repeat_occurrence_at ?? null,
     reminderEnabled: Boolean(row.reminder_enabled),
@@ -84,18 +93,21 @@ export async function createNote(input: NoteInput): Promise<Note> {
       const rows = await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes WHERE id = $1`, [created.noteId]);
       return fromRow(rows[0]);
     }
-    const reminderAt = await ReminderService.scheduleReminder(input);
+    const schedule = normalizedSchedule(input);
+    const normalizedInput = { ...input, ...schedule };
+    const reminderAt = await ReminderService.scheduleReminder(normalizedInput);
     const order = await db.select<Array<{ next_order: number }>>(
       "SELECT COALESCE(MAX(sort_order), 0) + 10 AS next_order FROM notes WHERE completed = 0 AND pinned = 0"
     );
     const result = await db.execute(
       `INSERT INTO notes
-        (content, title, details, category_id, priority, scheduled_at, reminder_enabled,
-         reminder_at, reminder_offset_minutes, created_at, updated_at, sort_order,
+        (content, title, details, category_id, priority, scheduled_at, scheduled_date, scheduled_time,
+         reminder_enabled, reminder_at, reminder_offset_minutes, created_at, updated_at, sort_order,
          board_column_id, board_order, status, completed, completed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11, $12, $11, $13, $14, $15)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13, $14, $13, $15, $16, $17)`,
       [title, title, input.details?.trim() || null, categoryId, input.priority || "normal",
-        input.scheduledAt || null, input.reminderEnabled ? 1 : 0, reminderAt,
+        schedule.scheduledAt, schedule.scheduledDate, schedule.scheduledTime,
+        input.reminderEnabled ? 1 : 0, reminderAt,
         input.reminderOffsetMinutes ?? 10, now, order[0].next_order, boardColumnId, boardStatus,
         boardStatus === "completed" ? 1 : 0, boardStatus === "completed" ? now : null]
     );
@@ -122,7 +134,10 @@ async function updateNoteUnlocked(id: number, input: NoteUpdate): Promise<void> 
     if (!currentRows.length) throw new Error("事项不存在");
     const current = fromRow(currentRows[0]);
     const categoryId = await resolveCategoryId(input.categoryId);
-    let scheduledAt = input.scheduledAt || null;
+    const requestedSchedule = normalizedSchedule(input);
+    let scheduledAt = requestedSchedule.scheduledAt;
+    let scheduledDate = requestedSchedule.scheduledDate;
+    let scheduledTime = requestedSchedule.scheduledTime;
     let reminderEnabled = Boolean(input.reminderEnabled);
     let reminderOffsetMinutes = input.reminderOffsetMinutes ?? 10;
     let computedReminderAt: string | null = null;
@@ -143,6 +158,8 @@ async function updateNoteUnlocked(id: number, input: NoteUpdate): Promise<void> 
       scheduledAt = current.repeatSeriesId == null
         ? series?.startAt || scheduledAt
         : current.repeatOccurrenceAt || current.scheduledAt;
+      scheduledDate = schedulePartsFromIso(scheduledAt).date;
+      scheduledTime = null;
       reminderEnabled = input.repeatReminderEnabled ?? series?.defaultReminderEnabled ?? true;
       const repeatReminderTime = input.repeatReminderTime || series?.defaultReminderTime || "09:00";
       computedReminderAt = scheduledAt ? repeatReminderAt(scheduledAt, reminderEnabled, repeatReminderTime) : null;
@@ -154,26 +171,26 @@ async function updateNoteUnlocked(id: number, input: NoteUpdate): Promise<void> 
         );
       } else await stopRepeatSeries(current.repeatSeriesId, db);
       computedReminderAt = reminderEnabled
-        ? await ReminderService.updateReminder(id, input)
+        ? await ReminderService.updateReminder(id, { ...input, scheduledAt, scheduledDate, scheduledTime })
         : (await ReminderService.cancelReminder(id), null);
     } else {
       computedReminderAt = reminderEnabled
-        ? await ReminderService.updateReminder(id, input)
+        ? await ReminderService.updateReminder(id, { ...input, scheduledAt, scheduledDate, scheduledTime })
         : (await ReminderService.cancelReminder(id), null);
     }
     try {
       await db.execute(
         `UPDATE notes SET content = $1, title = $1, details = $2, category_id = $3,
-         priority = $4, scheduled_at = $5,
+         priority = $4, scheduled_at = $5, scheduled_date = $6, scheduled_time = $7,
          reminder_triggered_at = CASE
-           WHEN reminder_enabled != $6 OR reminder_at IS NOT $7 THEN NULL ELSE reminder_triggered_at END,
-         reminder_enabled = $6, reminder_at = $7, reminder_offset_minutes = $8,
+           WHEN reminder_enabled != $8 OR reminder_at IS NOT $9 THEN NULL ELSE reminder_triggered_at END,
+         reminder_enabled = $8, reminder_at = $9, reminder_offset_minutes = $10,
          repeat_occurrence_at = CASE
            WHEN repeat_series_id IS NULL THEN NULL
-           WHEN $9 = 'occurrence' THEN repeat_occurrence_at ELSE $5 END,
-         updated_at = $10 WHERE id = $11`,
+           WHEN $11 = 'occurrence' THEN repeat_occurrence_at ELSE $5 END,
+         updated_at = $12 WHERE id = $13`,
         [title, input.details?.trim() || null, categoryId, input.priority || "normal",
-          scheduledAt, reminderEnabled ? 1 : 0, computedReminderAt,
+          scheduledAt, scheduledDate, scheduledTime, reminderEnabled ? 1 : 0, computedReminderAt,
           reminderOffsetMinutes, input.repeatEditScope || "series", new Date().toISOString(), id]
       );
     } catch (error) {
@@ -201,6 +218,45 @@ export async function setNotePinned(id: number, pinned: boolean): Promise<void> 
   try {
     await (await getDatabase()).execute("UPDATE notes SET pinned = $1, updated_at = $2 WHERE id = $3", [pinned ? 1 : 0, new Date().toISOString(), id]);
   } catch (error) { console.error("更新置顶状态失败:", error); throw new Error("更新置顶失败"); }
+}
+
+export async function rescheduleNote(id: number, scheduledDate: string | null): Promise<void> {
+  const db = await getDatabase();
+  const rows = await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes WHERE id = $1`, [id]);
+  if (!rows.length) throw new Error("事项不存在");
+  const current = fromRow(rows[0]);
+  if (current.repeatSeriesId != null) throw new Error("重复事项需要在详情中选择修改范围");
+
+  const schedule = normalizedSchedule({
+    scheduledDate,
+    scheduledTime: scheduledDate ? current.scheduledTime : null
+  });
+  if (scheduledDate !== null && schedule.scheduledDate === null) throw new Error("事项日期无效");
+  const targetDate = schedule.scheduledDate;
+  let reminderEnabled = current.reminderEnabled;
+  let reminderAt: string | null = current.reminderAt;
+  if (!targetDate) {
+    reminderEnabled = false;
+    reminderAt = null;
+  } else if (current.reminderEnabled && schedule.scheduledAt) {
+    reminderAt = ReminderService.calculateReminderAt(
+      schedule.scheduledAt,
+      current.reminderOffsetMinutes
+    );
+  } else if (current.reminderEnabled && current.reminderAt) {
+    const reminderTime = schedulePartsFromIso(current.reminderAt).time;
+    reminderAt = scheduledAtFromParts(targetDate, reminderTime);
+  }
+
+  await db.execute(
+    `UPDATE notes SET scheduled_at=$1, scheduled_date=$2, scheduled_time=$3,
+     reminder_enabled=$4, reminder_at=$5,
+     reminder_triggered_at=CASE WHEN reminder_at IS NOT $5 THEN NULL ELSE reminder_triggered_at END,
+     updated_at=$6 WHERE id=$7`,
+    [schedule.scheduledAt, schedule.scheduledDate, schedule.scheduledTime,
+      reminderEnabled ? 1 : 0, reminderAt, new Date().toISOString(), id]
+  );
+  await ReminderService.cancelReminder(id);
 }
 
 export async function setRepeatActive(seriesId: number, active: boolean): Promise<void> {
@@ -349,14 +405,16 @@ export async function importNotes(value: unknown): Promise<void> {
       for (const note of value.notes) {
         await insertImportedNote(db, note.title, note.details, categoryMap.get(note.categoryId || -1) || fallbackId,
           note.completed, note.pinned, note.priority, note.createdAt, note.updatedAt, note.completedAt, note.dueAt, note.sortOrder,
-          note.scheduledAt ?? null, note.reminderEnabled ?? false, note.reminderAt ?? null,
+          note.scheduledAt ?? null, note.scheduledDate ?? null, note.scheduledTime ?? null,
+          note.reminderEnabled ?? false, note.reminderAt ?? null,
           note.reminderOffsetMinutes ?? 0, note.reminderTriggeredAt ?? null,
           seriesMap.get(note.repeatSeriesId || -1) || null, note.repeatOccurrenceAt ?? null);
       }
     } else {
       for (const note of value.notes) {
         await insertImportedNote(db, note.content, null, fallbackId, note.completed, note.pinned, "normal",
-          note.createdAt, note.updatedAt, note.completedAt, null, note.sortOrder, null, false, null, 0, null, null, null);
+          note.createdAt, note.updatedAt, note.completedAt, null, note.sortOrder, null, null, null,
+          false, null, 0, null, null, null);
       }
     }
     await db.execute("COMMIT");
@@ -371,17 +429,21 @@ async function insertImportedNote(
   db: Awaited<ReturnType<typeof getDatabase>>, title: string, details: string | null, categoryId: number,
   completed: boolean, pinned: boolean, priority: NotePriority, createdAt: string, updatedAt: string,
   completedAt: string | null, dueAt: string | null, sortOrder: number,
-  scheduledAt: string | null, reminderEnabled: boolean, reminderAt: string | null,
+  scheduledAt: string | null, scheduledDate: string | null, scheduledTime: string | null,
+  reminderEnabled: boolean, reminderAt: string | null,
   reminderOffsetMinutes: number, reminderTriggeredAt: string | null,
   repeatSeriesId: number | null, repeatOccurrenceAt: string | null
 ) {
+  const schedule = normalizedSchedule({ scheduledAt, scheduledDate, scheduledTime });
   await db.execute(
     `INSERT INTO notes (content, title, details, category_id, completed, pinned, priority,
-      created_at, updated_at, completed_at, due_at, sort_order, scheduled_at, reminder_enabled,
+      created_at, updated_at, completed_at, due_at, sort_order, scheduled_at, scheduled_date,
+      scheduled_time, reminder_enabled,
       reminder_at, reminder_offset_minutes, reminder_triggered_at, repeat_series_id, repeat_occurrence_at)
-     VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+     VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
     [title.trim(), details, categoryId, completed ? 1 : 0, pinned ? 1 : 0, priority,
-      createdAt, updatedAt, completedAt, dueAt, sortOrder, scheduledAt, reminderEnabled ? 1 : 0,
+      createdAt, updatedAt, completedAt, dueAt, sortOrder, schedule.scheduledAt,
+      schedule.scheduledDate, schedule.scheduledTime, reminderEnabled ? 1 : 0,
       reminderAt, reminderOffsetMinutes, reminderTriggeredAt, repeatSeriesId, repeatOccurrenceAt]
   );
 }

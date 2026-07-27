@@ -1,6 +1,6 @@
 [package]
 name = "desktop-sticky-notes"
-version = "0.4.4"
+version = "0.5.0"
 description = "轻量的桌面便签和待办事项工具"
 authors = ["Desktop Sticky Notes"]
 edition = "2021"
@@ -26,3 +26,6 @@ tauri-plugin-notification = "2"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Threading", "Win32_UI_Controls", "Win32_UI_WindowsAndMessaging"] }
 tauri-winrt-notification = "0.7.3"
+
+[dev-dependencies]
+rusqlite = "0.32"

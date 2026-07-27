@@ -67,6 +67,7 @@ const repeatNote: Note = {
   id: 1, title: "每日更新信息", details: null, categoryId: null, completed: false, pinned: false,
   priority: "normal", createdAt: "2026-07-23T00:00:00.000Z", updatedAt: "2026-07-23T00:00:00.000Z",
   completedAt: null, dueAt: null, sortOrder: 10, scheduledAt: "2026-07-23T00:00:00.000Z",
+  scheduledDate: "2026-07-23", scheduledTime: null,
   repeatSeriesId: 4, repeatOccurrenceAt: "2026-07-23T00:00:00.000Z", reminderEnabled: false,
   reminderAt: null, reminderOffsetMinutes: 0, reminderTriggeredAt: null, boardColumnId: "todo",
   boardOrder: 10, status: "todo", previousBoardColumnId: null

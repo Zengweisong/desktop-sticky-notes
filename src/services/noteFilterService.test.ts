@@ -27,7 +27,7 @@ describe("noteFilterService", () => {
   it("supports overdue, future, and undated ranges", () => {
     expect(filterNotes(notes, "overdue", 1, today).map(({ id }) => id)).toEqual([7]);
     expect(filterNotes(notes, "future", 1, today).map(({ id }) => id)).toEqual([6]);
-    expect(filterNotes(notes, "undated", 1, today).map(({ id }) => id)).toEqual([8]);
+    expect(filterNotes(notes, "undated", 1, today).map(({ id }) => id)).toEqual([2, 3, 7, 8]);
   });
 });
 
@@ -50,7 +50,7 @@ function makeNote(
     completedAt: completed ? "2026-07-16T00:00:00.000Z" : null,
     dueAt: times.dueAt ?? null,
     sortOrder: id,
-    scheduledAt: times.scheduledAt ?? null,
+    scheduledAt: times.scheduledAt ?? null, scheduledDate: null, scheduledTime: null,
     repeatSeriesId: null,
     repeatOccurrenceAt: null,
     reminderEnabled: Boolean(times.reminderAt),

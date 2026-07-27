@@ -8,13 +8,14 @@ const db = {
 vi.mock("./database", () => ({ getDatabase: vi.fn(async () => db) }));
 vi.mock("./reminderService", () => ({
   ReminderService: {
+    calculateReminderAt: vi.fn(() => "2026-07-28T00:30:00.000Z"),
     updateReminder: vi.fn(async () => "2026-07-20T07:00:00.000Z"),
     cancelReminder: vi.fn(async () => undefined),
     scheduleReminder: vi.fn(async () => "2026-07-20T07:00:00.000Z")
   }
 }));
 
-import { createNote, updateNote } from "./noteService";
+import { createNote, rescheduleNote, updateNote } from "./noteService";
 import { ReminderService } from "./reminderService";
 import { generateDueOccurrences } from "./repeatTaskService";
 
@@ -53,7 +54,7 @@ describe("editing a reminder through the pooled Tauri database", () => {
     expect(updateCall?.[0]).not.toMatch(/due_at|is_all_day|all_day_reminder_time/);
     expect(updateCall?.[1]).toEqual([
       "提交周报", "发送给团队", 1, "normal", "2026-07-20T08:00:00.000Z",
-      1, "2026-07-20T07:00:00.000Z", 60, "series", expect.any(String), 7
+      "2026-07-20", "16:00", 1, "2026-07-20T07:00:00.000Z", 60, "series", expect.any(String), 7
     ]);
   });
 
@@ -73,7 +74,7 @@ describe("editing a reminder through the pooled Tauri database", () => {
     const updateCall = db.execute.mock.calls.find(([sql]) => sql.includes("UPDATE notes SET content"));
     expect(updateCall?.[1]).toEqual([
       "提交周报", null, 1, "normal", "2026-07-20T08:00:00.000Z",
-      0, null, 60, "series", expect.any(String), 7
+      "2026-07-20", "16:00", 0, null, 60, "series", expect.any(String), 7
     ]);
   });
 
@@ -105,7 +106,7 @@ describe("editing a reminder through the pooled Tauri database", () => {
     );
     const updateCall = db.execute.mock.calls.find(([sql]) => sql.includes("UPDATE notes SET content"));
     expect(updateCall?.[1]).toEqual([
-      "提交周报", null, 1, "normal", null, 0, null, 10, "occurrence", expect.any(String), 7
+      "提交周报", null, 1, "normal", null, null, null, 0, null, 10, "occurrence", expect.any(String), 7
     ]);
     expect(db.execute.mock.calls.map(([sql]) => sql).join(" ")).not.toMatch(/BEGIN|COMMIT|ROLLBACK/);
   });
@@ -231,6 +232,83 @@ describe("creating with the unified item time", () => {
     const insertCall = db.execute.mock.calls.find(([sql]) => sql.includes("INSERT INTO notes"));
     expect(insertCall?.[0]).toContain("scheduled_at");
     expect(insertCall?.[0]).not.toMatch(/due_at|is_all_day|all_day_reminder_time|reminder_target|reminder_datetime/i);
+  });
+
+  it("stores a date-only item without synthesizing scheduled_at or a time", async () => {
+    vi.clearAllMocks();
+    db.select.mockReset();
+    db.execute.mockReset();
+    db.select
+      .mockResolvedValueOnce([{ id: 1 }])
+      .mockResolvedValueOnce([{ next_order: 10 }])
+      .mockResolvedValueOnce([{ ...existingNoteRow(), scheduled_date: "2026-07-20", scheduled_time: null }]);
+    db.execute.mockResolvedValue({ rowsAffected: 1, lastInsertId: 8 });
+
+    await createNote({ title: "仅日期", categoryId: 1, scheduledDate: "2026-07-20", scheduledTime: null });
+
+    const insertCall = db.execute.mock.calls.find(([sql]) => sql.includes("INSERT INTO notes"));
+    expect(insertCall?.[1]?.slice(5, 8)).toEqual([null, "2026-07-20", null]);
+  });
+});
+
+describe("rescheduling from the calendar", () => {
+  it("changes only the date and preserves an explicit time", async () => {
+    vi.clearAllMocks();
+    db.select.mockResolvedValueOnce([{
+      ...existingNoteRow(), scheduled_at: new Date(2026, 6, 27, 9, 30).toISOString(),
+      scheduled_date: "2026-07-27", scheduled_time: "09:30"
+    }]);
+    db.execute.mockResolvedValue({ rowsAffected: 1, lastInsertId: 0 });
+
+    await rescheduleNote(7, "2026-07-28");
+
+    const values = db.execute.mock.calls[0][1];
+    expect(values?.slice(1, 3)).toEqual(["2026-07-28", "09:30"]);
+    const scheduled = new Date(values?.[0] as string);
+    expect([scheduled.getFullYear(), scheduled.getMonth(), scheduled.getDate(), scheduled.getHours(), scheduled.getMinutes()])
+      .toEqual([2026, 6, 28, 9, 30]);
+    expect(ReminderService.cancelReminder).toHaveBeenCalledWith(7);
+  });
+
+  it("does not cancel the existing reminder until the date update succeeds", async () => {
+    vi.clearAllMocks();
+    db.select.mockResolvedValueOnce([{
+      ...existingNoteRow(), scheduled_at: new Date(2026, 6, 27, 9, 30).toISOString(),
+      scheduled_date: "2026-07-27", scheduled_time: "09:30",
+      reminder_enabled: 1, reminder_at: "2026-07-27T00:30:00.000Z",
+      reminder_offset_minutes: 60
+    }]);
+    db.execute.mockRejectedValueOnce(new Error("save failed"));
+
+    await expect(rescheduleNote(7, "2026-07-28")).rejects.toThrow("save failed");
+
+    expect(ReminderService.calculateReminderAt).toHaveBeenCalled();
+    expect(ReminderService.cancelReminder).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid target before persistence or reminder side effects", async () => {
+    vi.clearAllMocks();
+    db.select.mockResolvedValueOnce([existingNoteRow()]);
+
+    await expect(rescheduleNote(7, "2026-02-30")).rejects.toThrow("事项日期无效");
+
+    expect(db.execute).not.toHaveBeenCalled();
+    expect(ReminderService.calculateReminderAt).not.toHaveBeenCalled();
+    expect(ReminderService.cancelReminder).not.toHaveBeenCalled();
+  });
+
+  it("keeps a date-only item time null and can move it back to unscheduled", async () => {
+    vi.clearAllMocks();
+    db.select
+      .mockResolvedValueOnce([{ ...existingNoteRow(), scheduled_date: "2026-07-27", scheduled_time: null }])
+      .mockResolvedValueOnce([{ ...existingNoteRow(), scheduled_date: "2026-07-28", scheduled_time: null }]);
+    db.execute.mockResolvedValue({ rowsAffected: 1, lastInsertId: 0 });
+
+    await rescheduleNote(7, "2026-07-28");
+    await rescheduleNote(7, null);
+
+    expect(db.execute.mock.calls[0][1]?.slice(0, 3)).toEqual([null, "2026-07-28", null]);
+    expect(db.execute.mock.calls[1][1]?.slice(0, 5)).toEqual([null, null, null, 0, null]);
   });
 });
 

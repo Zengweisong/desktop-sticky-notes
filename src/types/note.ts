@@ -14,8 +14,12 @@ export interface Note {
   completedAt: string | null;
   dueAt: string | null;
   sortOrder: number;
-  /** 唯一的事项时间。数据库字段为 scheduled_at。 */
+  /** 仅在用户明确设置时间时存在的兼容时间戳。 */
   scheduledAt: string | null;
+  /** 本地日历日期，格式为 YYYY-MM-DD；与具体时间独立持久化。 */
+  scheduledDate: string | null;
+  /** 用户明确设置的本地时间，格式为 HH:mm；仅日期事项为 null。 */
+  scheduledTime: string | null;
   repeatSeriesId: number | null;
   repeatOccurrenceAt: string | null;
   reminderEnabled: boolean;
@@ -43,6 +47,9 @@ export interface NoteRow {
   due_at: string | null;
   sort_order: number;
   scheduled_at: string | null;
+  scheduled_date?: string | null;
+  scheduled_time?: string | null;
+  is_all_day?: number | null;
   repeat_series_id: number | null;
   repeat_occurrence_at: string | null;
   reminder_enabled: number;
@@ -61,6 +68,8 @@ export interface NoteInput {
   categoryId?: number | null;
   priority?: NotePriority;
   scheduledAt?: string | null;
+  scheduledDate?: string | null;
+  scheduledTime?: string | null;
   /** 仅供编辑旧版无法换算为提前量的提醒，保存时保持其原始时间。 */
   legacyReminderAt?: string | null;
   /** 事项时间控件的临时草稿，不直接持久化。 */

@@ -98,7 +98,7 @@ export function normalizeSettings(value: unknown): AppSettings {
     taskSearch: typeof saved.taskSearch === "string" ? saved.taskSearch.slice(0, 200) : "",
     taskPriorityFilter: PRIORITIES.has(saved.taskPriorityFilter as PriorityFilter)
       ? saved.taskPriorityFilter as PriorityFilter : "all",
-    viewMode: saved.viewMode === "board" ? "board" : "list",
+    viewMode: saved.viewMode === "board" || saved.viewMode === "calendar" ? saved.viewMode : "list",
     window: currentWindow,
     listWindow: normalizedWindow(saved.listWindow,
       legacyWindowIsUsable ? currentWindow : DEFAULT_SETTINGS.listWindow,
@@ -107,7 +107,12 @@ export function normalizeSettings(value: unknown): AppSettings {
       ...DEFAULT_SETTINGS.boardWindow,
       x: currentWindow.x,
       y: currentWindow.y
-    }, isRecord(saved.boardWindow))
+    }, isRecord(saved.boardWindow)),
+    calendarWindow: normalizedWindow(saved.calendarWindow, {
+      ...DEFAULT_SETTINGS.calendarWindow,
+      x: currentWindow.x,
+      y: currentWindow.y
+    }, isRecord(saved.calendarWindow))
   };
 }
 

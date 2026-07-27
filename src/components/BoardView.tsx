@@ -347,7 +347,7 @@ function BoardCard({ note, categories, dragging, drop, menuOpen, onMenu, onOpen,
   onPointerUp: (event: React.PointerEvent<HTMLButtonElement>) => void; onPointerCancel: () => void;
 }) {
   const category = categories.find((item) => item.id === note.categoryId);
-  const hasItemTime = Boolean(note.scheduledAt && note.repeatSeriesId == null);
+  const hasItemSchedule = Boolean(note.scheduledDate && note.repeatSeriesId == null);
   return <article className={`board-card ${note.completed ? "completed" : ""} ${dragging ? "drag-placeholder" : ""} ${drop ? `drop-${drop}` : ""}`}
     data-note-id={note.id} onClick={onOpen}>
     {note.priority === "high" && <i className="high-priority-mark" />}
@@ -366,9 +366,9 @@ function BoardCard({ note, categories, dragging, drop, menuOpen, onMenu, onOpen,
         </div>}
       </div>
     </div>
-    {(category || hasItemTime || note.reminderAt || note.priority !== "normal") && <div className="board-card-meta">
+    {(category || hasItemSchedule || note.reminderAt || note.priority !== "normal") && <div className="board-card-meta">
       {category && <span className="board-tag"><i style={{ backgroundColor: category.color }} />{category.name}</span>}
-      {hasItemTime && <span title="事项时间"><CalendarClock size={10} />{shortDate(note.scheduledAt!)}</span>}
+      {hasItemSchedule && <span title={note.scheduledTime ? "事项时间" : "事项日期"}><CalendarClock size={10} />{shortSchedule(note)}</span>}
       {note.reminderEnabled && note.reminderAt && <span title="提醒时间"><Bell size={10} />{shortDate(note.reminderAt)}</span>}
       {note.priority !== "normal" && <span>{note.priority === "high" ? "高" : "低"}</span>}
     </div>}
@@ -377,4 +377,10 @@ function BoardCard({ note, categories, dragging, drop, menuOpen, onMenu, onOpen,
 
 function shortDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function shortSchedule(note: Note) {
+  if (!note.scheduledDate) return "";
+  const [, month, day] = note.scheduledDate.split("-").map(Number);
+  return note.scheduledTime ? `${month}月${day}日 ${note.scheduledTime}` : `${month}月${day}日`;
 }
