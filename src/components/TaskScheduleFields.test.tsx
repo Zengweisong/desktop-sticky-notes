@@ -17,7 +17,7 @@ describe("TaskScheduleFields product rules", () => {
     const reminder = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
     await act(async () => reminder.click());
     expect(reminder.getAttribute("aria-checked")).toBe("false");
-    expect(container!.textContent).toContain("请先设置事项时间");
+    expect(container!.textContent).toContain("请先设置具体时间");
     await act(async () => root.unmount());
   });
 
@@ -82,10 +82,7 @@ describe("TaskScheduleFields product rules", () => {
   it("clears an ordinary item time without restoring midnight", async () => {
     const root = await render({ scheduledAt: futurePlan(), reminderEnabled: true }, true);
     const time = container!.querySelector<HTMLInputElement>('input[type="time"]')!;
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(time, "");
-      time.dispatchEvent(new Event("input", { bubbles: true }));
-    });
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="清除具体时间"]')!.click());
 
     expect(time.value).toBe("");
     expect(container!.querySelector<HTMLInputElement>('input[type="date"]')!.value).not.toBe("");

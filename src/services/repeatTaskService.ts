@@ -295,9 +295,71 @@ export function calculateNextOccurrence(series: RepeatSeries, after: Date): stri
   return candidate.toISOString();
 }
 
+/** Calculates calendar-only occurrences without writing generated notes to SQLite. */
+export function calculateOccurrencesInRange(series: RepeatSeries, rangeStart: Date, rangeEnd: Date): string[] {
+  const first = new Date(series.startAt);
+  if (Number.isNaN(first.getTime()) || rangeEnd <= rangeStart || first >= rangeEnd) return [];
+  if (series.repeatType === "daily") return calculateDailyOccurrencesInRange(series, first, rangeStart, rangeEnd);
+  const occurrences: string[] = [];
+  let current = first;
+  let occurrenceCount = 1;
+  for (let guard = 0; guard < 50_000 && current < rangeEnd; guard += 1) {
+    if (current >= rangeStart) occurrences.push(current.toISOString());
+    if (series.endType === "count" && series.maxOccurrences != null && occurrenceCount >= series.maxOccurrences) break;
+    const nextValue = calculateNextOccurrence({ ...series, generatedOccurrences: occurrenceCount }, current);
+    if (!nextValue) break;
+    const next = new Date(nextValue);
+    if (Number.isNaN(next.getTime()) || next <= current) break;
+    current = next;
+    occurrenceCount += 1;
+  }
+  return occurrences;
+}
+
+function calculateDailyOccurrencesInRange(
+  series: RepeatSeries,
+  first: Date,
+  rangeStart: Date,
+  rangeEnd: Date
+) {
+  const interval = Math.max(1, series.repeatInterval);
+  const firstDay = Date.UTC(first.getFullYear(), first.getMonth(), first.getDate());
+  const rangeDay = Date.UTC(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate());
+  let index = Math.max(0, Math.floor((rangeDay - firstDay) / 86_400_000 / interval));
+  let current = new Date(first);
+  current.setDate(current.getDate() + index * interval);
+  if (current < rangeStart) {
+    index += 1;
+    current = new Date(first);
+    current.setDate(current.getDate() + index * interval);
+  }
+
+  const occurrences: string[] = [];
+  const end = series.endType === "date" && series.endDate
+    ? new Date(`${series.endDate}T23:59:59.999`)
+    : null;
+  while (current < rangeEnd) {
+    if (series.endType === "count" && series.maxOccurrences != null && index >= series.maxOccurrences) break;
+    if (end && current > end) break;
+    occurrences.push(current.toISOString());
+    index += 1;
+    current = new Date(first);
+    current.setDate(current.getDate() + index * interval);
+  }
+  return occurrences;
+}
+
 function nextDaily(after: Date, start: Date, interval: number) {
+  if (after < start) return new Date(start);
+  const startDay = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const afterDay = Date.UTC(after.getFullYear(), after.getMonth(), after.getDate());
+  const elapsedDays = Math.max(0, Math.floor((afterDay - startDay) / 86_400_000));
+  const steps = Math.floor(elapsedDays / interval) + 1;
   const candidate = new Date(start);
-  while (candidate <= after) candidate.setDate(candidate.getDate() + interval);
+  candidate.setDate(candidate.getDate() + steps * interval);
+  // The calendar-day calculation above is DST-safe; this final guard covers an
+  // `after` value later on the same occurrence day.
+  if (candidate <= after) candidate.setDate(candidate.getDate() + interval);
   return candidate;
 }
 

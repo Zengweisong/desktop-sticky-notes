@@ -11,38 +11,56 @@ export function filterNotes(
   search = "",
   priority: PriorityFilter = "all"
 ) {
-  const categoryNotes = filterByQuery(filterByCategory(notes, categoryId), search, priority);
-  if (timeRange === "today") return categoryNotes.filter((note) => isNoteRelevantOnLocalDate(note, today));
-  const datedNotes = categoryNotes.map((note) => ({ note, dates: noteDates(note) }));
-  if (timeRange === "undated") return datedNotes.filter(({ dates }) => !dates.length).map(({ note }) => note);
+  return notes.filter((note) => matchesNoteFilters(note, timeRange, categoryId, today, search, priority));
+}
+
+export function matchesNoteFilters(
+  note: Pick<Note, "title" | "details" | "categoryId" | "priority" | "scheduledDate" | "scheduledAt" | "dueAt" | "reminderAt">,
+  timeRange: NoteTimeFilter,
+  categoryId: number | null,
+  today = new Date(),
+  search = "",
+  priority: PriorityFilter = "all"
+) {
+  if (!matchesCategoryAndQuery(note, categoryId, search, priority)) return false;
+  if (timeRange === "today") return isNoteRelevantOnLocalDate(note, today);
+  if (timeRange === "undated") return !note.scheduledDate && !note.scheduledAt;
+  const dates = noteDates(note);
   const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  if (timeRange === "overdue") {
-    return datedNotes.filter(({ dates }) => dates.some((date) => date.getTime() < startOfToday)).map(({ note }) => note);
-  }
+  if (timeRange === "overdue") return dates.some((date) => date.getTime() < startOfToday);
   if (timeRange === "future") {
     const startOfTomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime();
-    return datedNotes.filter(({ dates }) => dates.some((date) => date.getTime() >= startOfTomorrow)).map(({ note }) => note);
+    return dates.some((date) => date.getTime() >= startOfTomorrow);
   }
-  return categoryNotes;
+  return true;
 }
 
-function filterByCategory(notes: Note[], categoryId: number | null) {
-  return categoryId == null ? notes : notes.filter((note) => note.categoryId === categoryId);
-}
-
-function filterByQuery(notes: Note[], search: string, priority: PriorityFilter) {
+function matchesCategoryAndQuery(
+  note: Pick<Note, "title" | "details" | "categoryId" | "priority">,
+  categoryId: number | null,
+  search: string,
+  priority: PriorityFilter
+) {
+  if (categoryId != null && note.categoryId !== categoryId) return false;
+  if (priority !== "all" && note.priority !== priority) return false;
   const query = search.trim().toLocaleLowerCase();
-  return notes.filter((note) => {
-    if (priority !== "all" && note.priority !== priority) return false;
-    if (!query) return true;
-    return note.title.toLocaleLowerCase().includes(query)
-      || (note.details || "").toLocaleLowerCase().includes(query);
-  });
+  return !query || note.title.toLocaleLowerCase().includes(query)
+    || (note.details || "").toLocaleLowerCase().includes(query);
 }
 
-function noteDates(note: Pick<Note, "scheduledAt" | "dueAt" | "reminderAt">) {
-  return [note.scheduledAt, note.dueAt, note.reminderAt]
+function noteDates(note: Pick<Note, "scheduledDate" | "scheduledAt" | "dueAt" | "reminderAt">) {
+  const scheduledDate = note.scheduledDate ? localDateFromKey(note.scheduledDate) : null;
+  const otherDates = [note.dueAt, note.reminderAt]
     .filter((value): value is string => Boolean(value))
     .map((value) => new Date(value))
     .filter((date) => !Number.isNaN(date.getTime()));
+  return scheduledDate ? [scheduledDate, ...otherDates] : note.scheduledAt
+    ? [new Date(note.scheduledAt), ...otherDates].filter((date) => !Number.isNaN(date.getTime()))
+    : otherDates;
+}
+
+function localDateFromKey(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
 }

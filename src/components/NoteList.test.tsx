@@ -222,7 +222,7 @@ function makeNote(id: number, title: string, completed = false): Note {
     id, title, details: null, categoryId: null, completed, pinned: false,
     priority: "normal", createdAt: `2026-07-15T00:00:${String(id).padStart(2, "0")}.000Z`,
     updatedAt: `2026-07-15T00:00:${String(id).padStart(2, "0")}.000Z`, completedAt: completed ? "2026-07-16T00:00:00.000Z" : null, dueAt: null, sortOrder: 0,
-    scheduledAt: null, repeatSeriesId: null, repeatOccurrenceAt: null,
+    scheduledAt: null, scheduledDate: null, scheduledTime: null, repeatSeriesId: null, repeatOccurrenceAt: null,
     reminderEnabled: false, reminderAt: null, reminderOffsetMinutes: 0, reminderTriggeredAt: null,
     boardColumnId: completed ? "completed" : "todo", boardOrder: id * 10,
     status: completed ? "completed" : "todo", previousBoardColumnId: null

@@ -1,4 +1,4 @@
-import { Check, Columns3, List, Search, Settings2, SlidersHorizontal, X } from "lucide-react";
+import { CalendarDays, Check, Columns3, List, ListFilter, Search, Settings2, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Category } from "../types/category";
 import type { NoteTimeFilter } from "../types/filter";
@@ -86,10 +86,10 @@ export function CategoryNav({
     </div>}
     <div className="content-actions">
       <div className="category-filter-picker" ref={pickerRef}>
-        <button ref={triggerRef} type="button" className={`category-filter-trigger ${hasFilter ? "has-filter" : ""}`}
+        <button ref={triggerRef} type="button" className={`category-filter-trigger icon-tooltip ${hasFilter ? "has-filter" : ""}`}
           aria-label="筛选事项" aria-haspopup="dialog" aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined}
-          title="筛选事项" onClick={() => setMenuOpen((open) => !open)}>
-          <SlidersHorizontal size={15} />{hasFilter && <i className="filter-active-dot" />}
+          title="筛选事项" data-tooltip="筛选事项" onClick={() => setMenuOpen((open) => !open)}>
+          <ListFilter size={15} />{hasFilter && <i className="filter-active-dot" />}
         </button>
         {menuOpen && <div id={menuId} className="category-filter-popover" role="dialog" aria-label="筛选事项">
           <div className="category-filter-title">筛选事项</div>
@@ -129,6 +129,8 @@ export function CategoryNav({
           aria-pressed={viewMode === "list"} title="列表视图" onClick={() => onViewModeChange?.("list")}><List size={14} /></button>
         <button type="button" className={viewMode === "board" ? "selected" : ""} aria-label="看板视图"
           aria-pressed={viewMode === "board"} title="看板视图" onClick={() => onViewModeChange?.("board")}><Columns3 size={14} /></button>
+        <button type="button" className={viewMode === "calendar" ? "selected" : ""} aria-label="月历视图"
+          aria-pressed={viewMode === "calendar"} title="月历视图" onClick={() => onViewModeChange?.("calendar")}><CalendarDays size={14} /></button>
       </div>
     </div>
   </nav>;

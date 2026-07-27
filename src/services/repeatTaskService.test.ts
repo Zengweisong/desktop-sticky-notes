@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateNextOccurrence, fromSeriesRow, repeatReminderAt } from "./repeatTaskService";
+import { calculateNextOccurrence, calculateOccurrencesInRange, fromSeriesRow, repeatReminderAt } from "./repeatTaskService";
 import type { RepeatSeriesRow } from "../types/repeat";
 import type { RepeatSeries } from "../types/repeat";
 
@@ -55,6 +55,28 @@ describe("repeat occurrence calculation", () => {
       created_at: start.toISOString(), updated_at: start.toISOString()
     };
     expect(fromSeriesRow(row).defaultReminderTime).toBe("09:00");
+  });
+
+  it("projects a bounded calendar range without changing the stored generation count", () => {
+    const start = local(2026, 7, 30, 0, 0);
+    const repeating = series("daily", start, { endType: "count", maxOccurrences: 4, generatedOccurrences: 2 });
+    const values = calculateOccurrencesInRange(repeating, local(2026, 8, 1, 0, 0), local(2026, 9, 1, 0, 0));
+
+    expect(values.map((value) => new Date(value).getDate())).toEqual([1, 2]);
+    expect(repeating.generatedOccurrences).toBe(2);
+  });
+
+  it("jumps directly to a modern calendar range for an old daily series", () => {
+    const repeating = series("daily", local(1900, 1, 1, 9, 0));
+    const values = calculateOccurrencesInRange(
+      repeating,
+      local(2026, 7, 1, 0, 0),
+      local(2026, 7, 8, 0, 0)
+    );
+
+    expect(values).toHaveLength(7);
+    expectLocal(values[0], 2026, 7, 1, 9, 0);
+    expectLocal(values[6], 2026, 7, 7, 9, 0);
   });
 });
 

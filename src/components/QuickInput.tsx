@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, Plus, SlidersHorizontal } from "lucide-react";
+import { CalendarClock, Check, ChevronDown, Plus } from "lucide-react";
 import type { Category } from "../types/category";
 import type { NoteInput } from "../types/note";
 import { TaskScheduleFields } from "./TaskScheduleFields";
+import { localDateKey, scheduledAtFromParts } from "../services/noteDateService";
 
 interface Props {
   categories: Category[];
@@ -16,10 +17,9 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
   const [submitting, setSubmitting] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [schedule, setSchedule] = useState<NoteInput>({
-    title: "", priority: "normal", reminderEnabled: false, reminderOffsetMinutes: 10,
-    repeatEnabled: false, repeatReminderEnabled: true, repeatReminderTime: "09:00"
-  });
+  const [schedule, setSchedule] = useState<NoteInput>(() => initialSchedule());
+  const scheduleDateTouched = useRef(false);
+  const currentDateKey = useRef(localDateKey(new Date()));
   const composing = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const categoryMenuRef = useRef<HTMLDivElement>(null);
@@ -29,6 +29,35 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
     const focus = () => { inputRef.current?.focus(); inputRef.current?.select(); };
     window.addEventListener("focus-quick-input", focus);
     return () => window.removeEventListener("focus-quick-input", focus);
+  }, []);
+
+  useEffect(() => {
+    let timer = 0;
+    const refreshDefaultDate = () => {
+      const now = new Date();
+      const nextDate = localDateKey(now);
+      if (nextDate !== currentDateKey.current) {
+        if (!scheduleDateTouched.current) {
+          setSchedule((current) => ({
+            ...current,
+            scheduledDate: nextDate,
+            scheduledAt: scheduledAtFromParts(nextDate, current.scheduledTime)
+          }));
+        }
+        currentDateKey.current = nextDate;
+      }
+      window.clearTimeout(timer);
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      timer = window.setTimeout(refreshDefaultDate, Math.max(1_000, nextMidnight.getTime() - now.getTime() + 100));
+    };
+    refreshDefaultDate();
+    window.addEventListener("focus", refreshDefaultDate);
+    document.addEventListener("visibilitychange", refreshDefaultDate);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("focus", refreshDefaultDate);
+      document.removeEventListener("visibilitychange", refreshDefaultDate);
+    };
   }, []);
 
   useEffect(() => {
@@ -53,8 +82,8 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
     const ok = await onAdd({ ...schedule, title: value, categoryId });
     if (ok) {
       setValue(""); setAdvancedOpen(false);
-      setSchedule({ title: "", priority: "normal", reminderEnabled: false, reminderOffsetMinutes: 10,
-        repeatEnabled: false, repeatReminderEnabled: true, repeatReminderTime: "09:00" });
+      scheduleDateTouched.current = false;
+      setSchedule(initialSchedule());
       inputRef.current?.focus();
     }
     setSubmitting(false);
@@ -69,7 +98,7 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
         onCompositionEnd={() => { composing.current = false; }}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current) {
+          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229 && !composing.current) {
             event.preventDefault(); void submit();
           }
         }}
@@ -89,18 +118,37 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
           </button>)}
         </div>}
       </div>
-      <button className={`advanced-trigger ${advancedOpen ? "selected" : ""}`} type="button"
-        onClick={() => setAdvancedOpen((open) => !open)} aria-label="时间安排" title="时间安排">
-        <SlidersHorizontal size={16} />
+      <button className={`advanced-trigger icon-tooltip ${advancedOpen ? "selected" : ""}`} type="button"
+        onClick={() => setAdvancedOpen((open) => !open)} aria-label="时间与重复设置" aria-expanded={advancedOpen}
+        title="时间与重复设置" data-tooltip="时间与重复设置">
+        <CalendarClock size={16} />
       </button>
       <button className="add-button" disabled={!value.trim() || submitting} onClick={() => void submit()} aria-label="添加事项">
         <Plus size={16} />
       </button>
     </div>
     {advancedOpen && <div className="quick-advanced-panel">
-      <TaskScheduleFields value={schedule} onChange={(patch) => setSchedule((current) => ({ ...current, ...patch }))}
+      <TaskScheduleFields value={schedule} onChange={(patch) => {
+        if (Object.prototype.hasOwnProperty.call(patch, "scheduledDate")) scheduleDateTouched.current = true;
+        setSchedule((current) => ({ ...current, ...patch }));
+      }}
         priority={schedule.priority || "normal"}
         onPriorityChange={(priority) => setSchedule((current) => ({ ...current, priority }))} compact />
     </div>}
   </div>;
+}
+
+function initialSchedule(): NoteInput {
+  return {
+    title: "",
+    priority: "normal",
+    scheduledDate: localDateKey(new Date()),
+    scheduledTime: null,
+    scheduledAt: null,
+    reminderEnabled: false,
+    reminderOffsetMinutes: 10,
+    repeatEnabled: false,
+    repeatReminderEnabled: true,
+    repeatReminderTime: "09:00"
+  };
 }

@@ -63,6 +63,26 @@ describe("CategoryNav", () => {
     await act(async () => root.unmount());
   });
 
+  it("uses distinct semantic controls for filtering and the three views", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onViewModeChange = vi.fn();
+    await act(async () => root.render(<CategoryNav categories={categories} timeFilter="all" categoryId={null}
+      viewMode="calendar" onTimeFilterChange={vi.fn()} onCategoryChange={vi.fn()} onManage={vi.fn()}
+      onViewModeChange={onViewModeChange} />));
+
+    const filter = container.querySelector<HTMLButtonElement>('[aria-label="筛选事项"]')!;
+    expect(filter.getAttribute("title")).toBe("筛选事项");
+    expect(filter.dataset.tooltip).toBe("筛选事项");
+    expect(filter.querySelector(".lucide-list-filter")).not.toBeNull();
+    expect(container.querySelectorAll(".view-switch button")).toHaveLength(3);
+    expect(container.querySelector('[aria-label="月历视图"]')?.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="列表视图"]')!.click());
+    expect(onViewModeChange).toHaveBeenCalledWith("list");
+    await act(async () => root.unmount());
+  });
+
   function button(text: string) {
     return [...(container?.querySelectorAll<HTMLButtonElement>("button") ?? [])]
       .find((item) => item.textContent?.trim().startsWith(text)) ?? null;

@@ -476,6 +476,59 @@ const MIGRATION_1_SQL: &str = concat!(
     "        "
 );
 
+const MIGRATION_6_SQL: &str = r#"
+                ALTER TABLE notes ADD COLUMN scheduled_date TEXT NULL
+                  CHECK (scheduled_date IS NULL OR scheduled_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]');
+                ALTER TABLE notes ADD COLUMN scheduled_time TEXT NULL
+                  CHECK (scheduled_time IS NULL OR
+                    (scheduled_time GLOB '[0-2][0-9]:[0-5][0-9]' AND scheduled_time <= '23:59'));
+
+                -- Preserve every historical non-all-day time, including a real 09:00.
+                -- Rows explicitly marked all-day migrate to a date with no item time.
+                -- v4 synthesized all-day scheduled_at values at midnight. Preserve the
+                -- original due_at date before applying localtime so western time zones
+                -- cannot move those rows to the previous day.
+                UPDATE notes
+                  SET scheduled_date = substr(due_at, 1, 10)
+                  WHERE COALESCE(is_all_day, 0) = 1 AND due_at IS NOT NULL
+                    AND substr(due_at, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                    AND CAST(substr(due_at, 6, 2) AS INTEGER) BETWEEN 1 AND 12
+                    AND CAST(substr(due_at, 9, 2) AS INTEGER) BETWEEN 1 AND CASE
+                      WHEN CAST(substr(due_at, 6, 2) AS INTEGER) IN (1,3,5,7,8,10,12) THEN 31
+                      WHEN CAST(substr(due_at, 6, 2) AS INTEGER) IN (4,6,9,11) THEN 30
+                      WHEN CAST(substr(due_at, 6, 2) AS INTEGER) = 2 THEN CASE
+                        WHEN CAST(substr(due_at, 1, 4) AS INTEGER) % 400 = 0
+                          OR (CAST(substr(due_at, 1, 4) AS INTEGER) % 4 = 0
+                            AND CAST(substr(due_at, 1, 4) AS INTEGER) % 100 != 0)
+                        THEN 29 ELSE 28 END
+                      ELSE 0 END;
+                UPDATE notes
+                  SET scheduled_date = strftime('%Y-%m-%d', scheduled_at, 'localtime')
+                  WHERE scheduled_at IS NOT NULL AND scheduled_date IS NULL;
+                UPDATE notes
+                  SET scheduled_time = strftime('%H:%M', scheduled_at, 'localtime')
+                  WHERE scheduled_at IS NOT NULL
+                    AND repeat_series_id IS NULL
+                    AND COALESCE(is_all_day, 0) = 0;
+                UPDATE notes
+                  SET scheduled_date = substr(due_at, 1, 10)
+                  WHERE scheduled_date IS NULL AND due_at IS NOT NULL
+                    AND substr(due_at, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                    AND CAST(substr(due_at, 6, 2) AS INTEGER) BETWEEN 1 AND 12
+                    AND CAST(substr(due_at, 9, 2) AS INTEGER) BETWEEN 1 AND CASE
+                      WHEN CAST(substr(due_at, 6, 2) AS INTEGER) IN (1,3,5,7,8,10,12) THEN 31
+                      WHEN CAST(substr(due_at, 6, 2) AS INTEGER) IN (4,6,9,11) THEN 30
+                      WHEN CAST(substr(due_at, 6, 2) AS INTEGER) = 2 THEN CASE
+                        WHEN CAST(substr(due_at, 1, 4) AS INTEGER) % 400 = 0
+                          OR (CAST(substr(due_at, 1, 4) AS INTEGER) % 4 = 0
+                            AND CAST(substr(due_at, 1, 4) AS INTEGER) % 100 != 0)
+                        THEN 29 ELSE 28 END
+                      ELSE 0 END;
+
+                CREATE INDEX IF NOT EXISTS idx_notes_scheduled_date
+                  ON notes(scheduled_date, scheduled_time);
+            "#;
+
 fn migrations() -> Vec<Migration> {
     vec![
         Migration {
@@ -645,6 +698,12 @@ fn migrations() -> Vec<Migration> {
             "#,
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "separate scheduled date and explicit time",
+            sql: MIGRATION_6_SQL,
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -797,6 +856,7 @@ pub fn run() {
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
+    use rusqlite::{params, Connection};
 
     #[test]
     fn transparency_uses_the_no_redirection_bitmap_style() {
@@ -837,5 +897,76 @@ mod tests {
         assert!(!sync_body.contains("HWND_NOTOPMOST"));
         assert!(!sync_body.contains("set_background_topmost_band"));
         assert_eq!(sync_body.matches("SetWindowPos(").count(), 1);
+    }
+
+    #[test]
+    fn schedule_migration_preserves_explicit_time_and_safe_date_only_rows() {
+        let connection = Connection::open_in_memory().expect("open migration fixture");
+        connection
+            .execute_batch(
+                "CREATE TABLE notes (
+                    id INTEGER PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    due_at TEXT NULL,
+                    scheduled_at TEXT NULL,
+                    repeat_series_id INTEGER NULL,
+                    is_all_day INTEGER NOT NULL DEFAULT 0
+                );",
+            )
+            .expect("create legacy notes table");
+        let local_nine_as_utc: String = connection
+            .query_row(
+                "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', '2026-07-27 09:00:00', 'utc')",
+                [],
+                |row| row.get(0),
+            )
+            .expect("derive a UTC value for local 09:00");
+        connection
+            .execute(
+                "INSERT INTO notes VALUES (1,'timed',NULL,?1,NULL,0)",
+                params![local_nine_as_utc],
+            )
+            .expect("insert timed row");
+        connection
+            .execute_batch(
+                "INSERT INTO notes VALUES (2,'all-day','2026-07-27','2026-07-27T00:00:00',NULL,1);
+                 INSERT INTO notes VALUES (3,'malformed','not-a-date-value',NULL,NULL,0);
+                 INSERT INTO notes VALUES (4,'impossible','2026-02-30',NULL,NULL,0);
+                 INSERT INTO notes VALUES (5,'repeat',NULL,'2026-07-28T00:00:00Z',9,0);",
+            )
+            .expect("insert legacy date rows");
+
+        connection
+            .execute_batch(MIGRATION_6_SQL)
+            .expect("migration should tolerate malformed legacy dates");
+
+        let timed: (Option<String>, Option<String>) = connection
+            .query_row(
+                "SELECT scheduled_date, scheduled_time FROM notes WHERE id=1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read timed result");
+        assert_eq!(timed.1.as_deref(), Some("09:00"));
+
+        let all_day: (Option<String>, Option<String>) = connection
+            .query_row(
+                "SELECT scheduled_date, scheduled_time FROM notes WHERE id=2",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read all-day result");
+        assert_eq!(all_day, (Some("2026-07-27".into()), None));
+
+        for id in [3, 4] {
+            let date: Option<String> = connection
+                .query_row("SELECT scheduled_date FROM notes WHERE id=?1", [id], |row| row.get(0))
+                .expect("read invalid legacy row");
+            assert_eq!(date, None);
+        }
+        let repeat_time: Option<String> = connection
+            .query_row("SELECT scheduled_time FROM notes WHERE id=5", [], |row| row.get(0))
+            .expect("read repeat result");
+        assert_eq!(repeat_time, None);
     }
 }

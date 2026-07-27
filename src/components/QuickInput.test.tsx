@@ -49,7 +49,7 @@ describe("QuickInput category menu", () => {
     await act(async () => root.render(<QuickInput categories={categories} categoryId={2}
       onCategoryChange={vi.fn()} onAdd={onAdd} />));
 
-    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="时间安排"]')!.click());
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="时间与重复设置"]')!.click());
     const primaryRow = container.querySelector(".schedule-primary-row");
     expect(primaryRow?.querySelector('select[aria-label="优先级"]')).not.toBeNull();
     expect(primaryRow?.querySelector('[role="switch"][aria-label="提醒"]')).not.toBeNull();
@@ -63,6 +63,56 @@ describe("QuickInput category menu", () => {
     });
     await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="添加事项"]')!.click());
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ title: "只使用顶部分类", categoryId: 2 }));
+    await act(async () => root.unmount());
+  });
+
+  it("does not add an item while Enter is confirming IME input", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onAdd = vi.fn().mockResolvedValue(true);
+
+    await act(async () => root.render(<QuickInput categories={categories} categoryId={1}
+      onCategoryChange={vi.fn()} onAdd={onAdd} />));
+    const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "中文输入");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const composingEvent = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    Object.defineProperty(composingEvent, "isComposing", { value: true });
+    await act(async () => { input.dispatchEvent(composingEvent); });
+
+    const legacyEvent = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    Object.defineProperty(legacyEvent, "keyCode", { value: 229 });
+    await act(async () => { input.dispatchEvent(legacyEvent); });
+
+    expect(onAdd).not.toHaveBeenCalled();
+    expect(input.value).toBe("中文输入");
+    await act(async () => root.unmount());
+  });
+
+  it("still adds an item with a normal Enter key", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onAdd = vi.fn().mockResolvedValue(true);
+
+    await act(async () => root.render(<QuickInput categories={categories} categoryId={2}
+      onCategoryChange={vi.fn()} onAdd={onAdd} />));
+    const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "正常新增");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({
+      title: "正常新增", categoryId: 2, scheduledDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      scheduledTime: null, scheduledAt: null
+    }));
     await act(async () => root.unmount());
   });
 });
