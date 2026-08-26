@@ -66,14 +66,17 @@ async function resolveCategoryId(categoryId?: number | null): Promise<number> {
 
 export async function listNotes(): Promise<Note[]> {
   try {
-    const db = await getDatabase();
-    await ensureBoardPlacement();
-    const notes = (await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes ${ORDER_BY}`)).map(fromRow);
-    return collapseRepeatSeriesNotes(notes);
+    return collapseRepeatSeriesNotes(await listAllNotes());
   } catch (error) {
     console.error("读取事项失败:", error);
     throw new Error("读取事项失败");
   }
+}
+
+async function listAllNotes(): Promise<Note[]> {
+  const db = await getDatabase();
+  await ensureBoardPlacement();
+  return (await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes ${ORDER_BY}`)).map(fromRow);
 }
 
 export async function createNote(input: NoteInput): Promise<Note> {
@@ -330,7 +333,7 @@ export async function clearCompletedNotes(): Promise<void> {
 }
 
 export async function exportNotes(): Promise<ExportPayloadV3> {
-  const [notes, categories, repeatSeries] = await Promise.all([listNotes(), listCategories(), listRepeatSeries()]);
+  const [notes, categories, repeatSeries] = await Promise.all([listAllNotes(), listCategories(), listRepeatSeries()]);
   return { version: 3, exportedAt: new Date().toISOString(), notes, categories, repeatSeries };
 }
 
