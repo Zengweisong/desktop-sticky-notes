@@ -22,7 +22,7 @@ describe("QuickInput category menu", () => {
     const onCategoryChange = vi.fn();
 
     await act(async () => root.render(<QuickInput categories={categories} categoryId={1}
-      onCategoryChange={onCategoryChange} onAdd={vi.fn().mockResolvedValue(true)} />));
+      defaultToToday onCategoryChange={onCategoryChange} onAdd={vi.fn().mockResolvedValue(true)} />));
 
     const trigger = container.querySelector<HTMLButtonElement>('[aria-label="选择所属类别"]')!;
     await act(async () => trigger.click());
@@ -47,7 +47,7 @@ describe("QuickInput category menu", () => {
     const onAdd = vi.fn().mockResolvedValue(true);
 
     await act(async () => root.render(<QuickInput categories={categories} categoryId={2}
-      onCategoryChange={vi.fn()} onAdd={onAdd} />));
+      defaultToToday onCategoryChange={vi.fn()} onAdd={onAdd} />));
 
     await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="时间与重复设置"]')!.click());
     const primaryRow = container.querySelector(".schedule-primary-row");
@@ -73,7 +73,7 @@ describe("QuickInput category menu", () => {
     const onAdd = vi.fn().mockResolvedValue(true);
 
     await act(async () => root.render(<QuickInput categories={categories} categoryId={1}
-      onCategoryChange={vi.fn()} onAdd={onAdd} />));
+      defaultToToday onCategoryChange={vi.fn()} onAdd={onAdd} />));
     const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "中文输入");
@@ -99,7 +99,7 @@ describe("QuickInput category menu", () => {
     const onAdd = vi.fn().mockResolvedValue(true);
 
     await act(async () => root.render(<QuickInput categories={categories} categoryId={2}
-      onCategoryChange={vi.fn()} onAdd={onAdd} />));
+      defaultToToday onCategoryChange={vi.fn()} onAdd={onAdd} />));
     const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "正常新增");
@@ -112,6 +112,27 @@ describe("QuickInput category menu", () => {
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({
       title: "正常新增", categoryId: 2, scheduledDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       scheduledTime: null, scheduledAt: null
+    }));
+    await act(async () => root.unmount());
+  });
+
+  it("adds an undated item when the default-today setting is disabled", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onAdd = vi.fn().mockResolvedValue(true);
+
+    await act(async () => root.render(<QuickInput categories={categories} categoryId={1}
+      defaultToToday={false} onCategoryChange={vi.fn()} onAdd={onAdd} />));
+    const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "稍后整理");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({
+      title: "稍后整理", scheduledDate: null, scheduledTime: null, scheduledAt: null
     }));
     await act(async () => root.unmount());
   });

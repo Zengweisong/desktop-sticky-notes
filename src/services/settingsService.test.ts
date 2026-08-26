@@ -64,6 +64,13 @@ describe("normalizeSettings", () => {
     });
   });
 
+  it("defaults quick additions to today and persists an opt-out", () => {
+    expect(normalizeSettings({})).toMatchObject({ quickAddDefaultsToToday: true });
+    expect(normalizeSettings({ quickAddDefaultsToToday: false })).toMatchObject({
+      quickAddDefaultsToToday: false
+    });
+  });
+
   it("persists calendar view and supplies its dedicated window state", () => {
     expect(normalizeSettings({ viewMode: "calendar" })).toMatchObject({
       viewMode: "calendar",

@@ -8,16 +8,17 @@ import { localDateKey, scheduledAtFromParts } from "../services/noteDateService"
 interface Props {
   categories: Category[];
   categoryId: number | null;
+  defaultToToday: boolean;
   onCategoryChange: (id: number) => void;
   onAdd: (input: NoteInput) => Promise<boolean>;
 }
 
-export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: Props) {
+export function QuickInput({ categories, categoryId, defaultToToday, onCategoryChange, onAdd }: Props) {
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [schedule, setSchedule] = useState<NoteInput>(() => initialSchedule());
+  const [schedule, setSchedule] = useState<NoteInput>(() => initialSchedule(defaultToToday));
   const scheduleDateTouched = useRef(false);
   const currentDateKey = useRef(localDateKey(new Date()));
   const composing = useRef(false);
@@ -32,12 +33,23 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
   }, []);
 
   useEffect(() => {
+    if (scheduleDateTouched.current) return;
+    const scheduledDate = defaultToToday ? localDateKey(new Date()) : null;
+    setSchedule((current) => ({
+      ...current,
+      scheduledDate,
+      scheduledTime: scheduledDate ? current.scheduledTime : null,
+      scheduledAt: scheduledAtFromParts(scheduledDate, scheduledDate ? current.scheduledTime : null)
+    }));
+  }, [defaultToToday]);
+
+  useEffect(() => {
     let timer = 0;
     const refreshDefaultDate = () => {
       const now = new Date();
       const nextDate = localDateKey(now);
       if (nextDate !== currentDateKey.current) {
-        if (!scheduleDateTouched.current) {
+        if (defaultToToday && !scheduleDateTouched.current) {
           setSchedule((current) => ({
             ...current,
             scheduledDate: nextDate,
@@ -58,7 +70,7 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
       window.removeEventListener("focus", refreshDefaultDate);
       document.removeEventListener("visibilitychange", refreshDefaultDate);
     };
-  }, []);
+  }, [defaultToToday]);
 
   useEffect(() => {
     if (!categoryMenuOpen) return;
@@ -83,7 +95,7 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
     if (ok) {
       setValue(""); setAdvancedOpen(false);
       scheduleDateTouched.current = false;
-      setSchedule(initialSchedule());
+      setSchedule(initialSchedule(defaultToToday));
       inputRef.current?.focus();
     }
     setSubmitting(false);
@@ -138,11 +150,11 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
   </div>;
 }
 
-function initialSchedule(): NoteInput {
+function initialSchedule(defaultToToday: boolean): NoteInput {
   return {
     title: "",
     priority: "normal",
-    scheduledDate: localDateKey(new Date()),
+    scheduledDate: defaultToToday ? localDateKey(new Date()) : null,
     scheduledTime: null,
     scheduledAt: null,
     reminderEnabled: false,

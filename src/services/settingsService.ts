@@ -87,6 +87,7 @@ export function normalizeSettings(value: unknown): AppSettings {
     showOnStartup: booleanValue(saved.showOnStartup, DEFAULT_SETTINGS.showOnStartup),
     showCompleted: booleanValue(saved.showCompleted, DEFAULT_SETTINGS.showCompleted),
     completedSectionExpanded: booleanValue(saved.completedSectionExpanded, DEFAULT_SETTINGS.completedSectionExpanded),
+    quickAddDefaultsToToday: booleanValue(saved.quickAddDefaultsToToday, DEFAULT_SETTINGS.quickAddDefaultsToToday),
     shortcut: typeof saved.shortcut === "string" && saved.shortcut.trim().length > 0 && saved.shortcut.length <= 80
       ? saved.shortcut
       : DEFAULT_SETTINGS.shortcut,

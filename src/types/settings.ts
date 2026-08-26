@@ -23,6 +23,7 @@ export interface AppSettings {
   showOnStartup: boolean;
   showCompleted: boolean;
   completedSectionExpanded: boolean;
+  quickAddDefaultsToToday: boolean;
   shortcut: string;
   fontSize: FontSizePreference;
   taskTimeFilter: NoteTimeFilter;
@@ -44,6 +45,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showOnStartup: true,
   showCompleted: false,
   completedSectionExpanded: false,
+  quickAddDefaultsToToday: true,
   shortcut: "Ctrl+Alt+Space",
   fontSize: "medium",
   taskTimeFilter: "all",

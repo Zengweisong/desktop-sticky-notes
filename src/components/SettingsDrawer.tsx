@@ -98,6 +98,13 @@ export function SettingsDrawer(props: Props) {
               checked={props.settings.showCompleted} onChange={(showCompleted) => void props.onUpdate({ showCompleted })} />
           </div>
         </div>
+        <div className="setting-block"><div className="setting-heading"><span>快捷添加</span></div>
+          <div className="setting-list display-setting-list">
+            <Toggle label="默认安排到今天" description="关闭后，直接添加的事项不设日期；仍可在时间设置中手动选择。"
+              checked={props.settings.quickAddDefaultsToToday}
+              onChange={(quickAddDefaultsToToday) => void props.onUpdate({ quickAddDefaultsToToday })} />
+          </div>
+        </div>
         <button className={`shortcut-card ${recordingShortcut ? "recording" : ""}`} type="button"
           disabled={shortcutBusy} onClick={() => setRecordingShortcut(true)}
           onBlur={() => setRecordingShortcut(false)} onKeyDown={(event) => {

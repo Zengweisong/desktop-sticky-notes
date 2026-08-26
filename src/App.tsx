@@ -299,6 +299,7 @@ export default function App() {
       <CustomTitleBar alwaysOnTop={prefs.settings.alwaysOnTop} onToggleTop={toggleAlwaysOnTop}
         onOpenSettings={() => { setCategoriesOpen(false); setSettingsOpen(true); }} />
       <div className="quick-area"><QuickInput categories={categories.categories} categoryId={quickCategoryId}
+        defaultToToday={prefs.settings.quickAddDefaultsToToday}
         onCategoryChange={setQuickCategoryId} onAdd={(input) => notes.add({ ...input,
           boardColumnId: prefs.settings.viewMode === "board" ? selectedBoardColumnId || TODO_COLUMN_ID : input.boardColumnId
         })} /></div>
