@@ -3,6 +3,19 @@ import type { NoteTimeFilter } from "../types/filter";
 import type { Note } from "../types/note";
 import type { PriorityFilter } from "../types/settings";
 
+export function collapseRepeatSeriesNotes(notes: Note[]) {
+  const latestBySeries = new Map<number, Note>();
+  for (const note of notes) {
+    if (note.repeatSeriesId == null) continue;
+    const current = latestBySeries.get(note.repeatSeriesId);
+    if (!current || occurrenceTime(note) > occurrenceTime(current)
+      || (occurrenceTime(note) === occurrenceTime(current) && note.id > current.id)) {
+      latestBySeries.set(note.repeatSeriesId, note);
+    }
+  }
+  return notes.filter((note) => note.repeatSeriesId == null || latestBySeries.get(note.repeatSeriesId)?.id === note.id);
+}
+
 export function filterNotes(
   notes: Note[],
   timeRange: NoteTimeFilter,
@@ -63,4 +76,10 @@ function localDateFromKey(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+function occurrenceTime(note: Note) {
+  const value = note.repeatOccurrenceAt || note.scheduledAt || note.createdAt;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }

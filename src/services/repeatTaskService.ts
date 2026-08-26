@@ -256,7 +256,38 @@ async function generateDueOccurrencesUnlocked(now: Date): Promise<number> {
     const state = { ...series, generatedOccurrences: processed };
     const next = calculateNextOccurrence(state, new Date(latest));
     const active = next !== null;
-    const result = await db.execute(
+    const nowIso = now.toISOString();
+    const reminderAt = repeatReminderAt(latest, series.defaultReminderEnabled, series.defaultReminderTime);
+    const reused = await db.execute(
+        `UPDATE notes SET content=$1, title=$1, details=$2, category_id=$3, priority=$4,
+         scheduled_at=$5, scheduled_date=NULL, scheduled_time=NULL, repeat_occurrence_at=$5,
+         reminder_enabled=$7, reminder_at=$8, reminder_offset_minutes=0, reminder_triggered_at=NULL,
+         sort_order=CASE WHEN completed=1 THEN
+           (SELECT COALESCE(MAX(sort_order),0)+10 FROM notes WHERE completed=0 AND pinned=0)
+           ELSE sort_order END,
+         board_order=CASE WHEN completed=1 THEN
+           (SELECT COALESCE(MAX(board_order),0)+10 FROM notes WHERE board_column_id='todo')
+           ELSE board_order END,
+         pinned=CASE WHEN completed=1 THEN 0 ELSE pinned END,
+         board_column_id=CASE WHEN completed=1 THEN 'todo' ELSE board_column_id END,
+         status=CASE WHEN completed=1 THEN 'todo' ELSE status END,
+         previous_board_column_id=CASE WHEN completed=1 THEN NULL ELSE previous_board_column_id END,
+         completed=0, completed_at=NULL, updated_at=$9
+         WHERE id=(SELECT id FROM notes WHERE repeat_series_id=$6
+           ORDER BY repeat_occurrence_at DESC, id DESC LIMIT 1)`,
+        [series.title, series.details, series.categoryId, series.priority, latest, series.id,
+          series.defaultReminderEnabled ? 1 : 0, reminderAt, nowIso]
+    );
+    let changed = reused.rowsAffected;
+    if (changed > 0) {
+      await db.execute(
+        `UPDATE notes SET reminder_enabled=0, reminder_at=NULL, reminder_triggered_at=NULL, updated_at=$2
+         WHERE repeat_series_id=$1 AND completed=0 AND id<>(SELECT id FROM notes
+           WHERE repeat_series_id=$1 ORDER BY repeat_occurrence_at DESC, id DESC LIMIT 1)`,
+        [series.id, nowIso]
+      );
+    } else {
+      const result = await db.execute(
         `INSERT OR IGNORE INTO notes (content, title, details, category_id, priority, scheduled_at,
          repeat_series_id, repeat_occurrence_at, reminder_enabled, reminder_at,
          reminder_offset_minutes, created_at, updated_at, sort_order)
@@ -264,15 +295,16 @@ async function generateDueOccurrencesUnlocked(now: Date): Promise<number> {
            (SELECT COALESCE(MAX(sort_order),0)+10 FROM notes WHERE completed=0 AND pinned=0))`,
         [series.title, series.details, series.categoryId, series.priority, latest, series.id,
           series.defaultReminderEnabled ? 1 : 0,
-          repeatReminderAt(latest, series.defaultReminderEnabled, series.defaultReminderTime),
-          0, now.toISOString()]
-    );
+          reminderAt, 0, nowIso]
+      );
+      changed = result.rowsAffected;
+    }
     await db.execute(
         `UPDATE repeat_series SET generated_occurrences=$1, next_occurrence_at=$2,
          active=$3, updated_at=$4 WHERE id=$5`,
-        [processed, next, active ? 1 : 0, now.toISOString(), series.id]
+        [processed, next, active ? 1 : 0, nowIso, series.id]
     );
-    if (result.rowsAffected > 0) generated += 1;
+    if (changed > 0) generated += 1;
   }
   return generated;
 }

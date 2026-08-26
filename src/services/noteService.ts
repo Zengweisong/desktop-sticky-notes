@@ -8,6 +8,7 @@ import type { RepeatSeries } from "../types/repeat";
 import { ensureBoardPlacement, setBoardNoteCompleted } from "./boardService";
 import { COMPLETED_COLUMN_ID, TODO_COLUMN_ID } from "../types/board";
 import { normalizedSchedule, schedulePartsFromIso, scheduledAtFromParts } from "./noteDateService";
+import { collapseRepeatSeriesNotes } from "./noteFilterService";
 
 const SELECT_FIELDS = `id, title, content, details, category_id, completed, pinned, priority,
   created_at, updated_at, completed_at, due_at, sort_order, scheduled_at, scheduled_date, scheduled_time,
@@ -67,7 +68,8 @@ export async function listNotes(): Promise<Note[]> {
   try {
     const db = await getDatabase();
     await ensureBoardPlacement();
-    return (await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes ${ORDER_BY}`)).map(fromRow);
+    const notes = (await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes ${ORDER_BY}`)).map(fromRow);
+    return collapseRepeatSeriesNotes(notes);
   } catch (error) {
     console.error("读取事项失败:", error);
     throw new Error("读取事项失败");
