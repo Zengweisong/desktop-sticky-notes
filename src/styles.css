@@ -498,11 +498,11 @@ textarea::placeholder, input::placeholder {
   overflow-x: hidden;
   overflow-y: auto;
   padding: 0 4px 14px 0;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(115, 105, 91, .26) transparent;
+  scrollbar-width: none;
 }
 .content-viewport::-webkit-scrollbar, textarea::-webkit-scrollbar, .drawer-content::-webkit-scrollbar { width: 5px; }
 .content-viewport::-webkit-scrollbar-thumb, textarea::-webkit-scrollbar-thumb, .drawer-content::-webkit-scrollbar-thumb { background: rgba(115, 105, 91, .26); border-radius: 8px; }
+.content-viewport::-webkit-scrollbar { width: 0; height: 0; }
 .filtered-list { min-width: 0; animation: filter-content-in 180ms ease-out; }
 .board-mode .list-area { padding: 0 10px 0 14px; }
 .board-mode .content-viewport { overflow: hidden; padding: 0 4px 10px 0; }

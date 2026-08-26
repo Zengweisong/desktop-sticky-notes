@@ -36,6 +36,17 @@ describe("quick category menu layering", () => {
   });
 });
 
+describe("main list scrolling", () => {
+  it("keeps wheel scrolling while hiding the WebView scrollbar", () => {
+    const viewportRule = css.match(/\.content-viewport\s*\{([^}]*)\}/)?.[1] ?? "";
+    const scrollbarRule = css.match(/\.content-viewport::\-webkit-scrollbar\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(viewportRule).toContain("overflow-y: auto");
+    expect(viewportRule).toContain("scrollbar-width: none");
+    expect(scrollbarRule).toContain("width: 0");
+  });
+});
+
 describe("schedule form layout", () => {
   it("keeps the advanced panel inside its parent width", () => {
     const panelRule = css.match(/\.quick-advanced-panel\s*\{([^}]*)\}/)?.[1] ?? "";
