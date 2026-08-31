@@ -12,7 +12,7 @@ vi.mock("./boardService", () => ({
   setBoardNoteCompleted: vi.fn(async () => undefined)
 }));
 
-import { exportNotes, listNotes } from "./noteService";
+import { exportNotes, importNotes, listNotes } from "./noteService";
 
 describe("note export", () => {
   beforeEach(() => {
@@ -29,6 +29,30 @@ describe("note export", () => {
     const payload = await exportNotes();
 
     expect(payload.notes.map(({ id }) => id)).toEqual([1, 2]);
+  });
+
+  it("preserves legacy scheduledAt when a v3 backup predates split date fields", async () => {
+    const scheduledAt = new Date(2026, 7, 20, 9, 30).toISOString();
+    db.select.mockResolvedValue([{ id: 1 }]);
+
+    await importNotes({
+      version: 3,
+      exportedAt: new Date().toISOString(),
+      categories: [{
+        id: 1, name: "未分类", color: "#64748b", icon: null,
+        sortOrder: 0, createdAt: new Date().toISOString(), isSystem: true
+      }],
+      repeatSeries: [],
+      notes: [{
+        title: "旧备份事项", details: null, categoryId: 1,
+        completed: false, pinned: false, priority: "normal",
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        completedAt: null, dueAt: null, sortOrder: 10, scheduledAt
+      }]
+    });
+
+    const insert = db.execute.mock.calls.find(([sql]) => sql.includes("INSERT INTO notes"));
+    expect(insert?.[1]?.slice(11, 14)).toEqual([scheduledAt, "2026-08-20", "09:30"]);
   });
 });
 

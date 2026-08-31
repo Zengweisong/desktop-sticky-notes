@@ -16,6 +16,7 @@ interface Props {
   categories: Category[];
   repeatSeries: RepeatSeries[];
   loading: boolean;
+  minimal?: boolean;
   selectedColumnId: string | null;
   onSelectedColumnChange: (id: string | null) => void;
   onAdd: (input: NoteInput) => Promise<boolean>;
@@ -265,8 +266,8 @@ export function BoardView(props: Props) {
                 {columnNotes.map((note) => <BoardCard key={note.id} note={note} categories={categories}
                   dragging={dragNoteId === note.id} drop={cardDrop?.targetId === note.id ? cardDrop.position : null}
                   menuOpen={menuNoteId === note.id} onMenu={() => setMenuNoteId((id) => id === note.id ? null : note.id)}
-                  onOpen={() => setOpenedNote({ id: note.id, edit: false })}
-                  onEdit={() => { setOpenedNote({ id: note.id, edit: true }); setMenuNoteId(null); }}
+                  minimal={props.minimal}
+                  onOpen={() => setOpenedNote({ id: note.id, edit: true })}
                   onToggleCompleted={() => props.onToggleCompleted(note)} onTogglePinned={() => props.onTogglePinned(note)}
                   onDelete={() => { setDeleteNote(note); setMenuNoteId(null); }}
                   onPointerDown={(event) => beginCardDrag(event, note)} onPointerMove={moveCardDrag}
@@ -337,10 +338,10 @@ export function BoardView(props: Props) {
   </>;
 }
 
-function BoardCard({ note, categories, dragging, drop, menuOpen, onMenu, onOpen, onEdit, onToggleCompleted, onTogglePinned, onDelete,
+function BoardCard({ note, categories, minimal = false, dragging, drop, menuOpen, onMenu, onOpen, onToggleCompleted, onTogglePinned, onDelete,
   onPointerDown, onPointerMove, onPointerUp, onPointerCancel }: {
   note: Note; categories: Category[]; dragging: boolean; drop: "before" | "after" | null; menuOpen: boolean;
-  onMenu: () => void; onOpen: () => void; onEdit: () => void; onToggleCompleted: () => Promise<boolean>;
+  minimal?: boolean; onMenu: () => void; onOpen: () => void; onToggleCompleted: () => Promise<boolean>;
   onTogglePinned: () => Promise<boolean>; onDelete: () => void;
   onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onPointerMove: (event: React.PointerEvent<HTMLButtonElement>) => void;
@@ -350,7 +351,7 @@ function BoardCard({ note, categories, dragging, drop, menuOpen, onMenu, onOpen,
   const hasItemSchedule = Boolean(note.scheduledDate && note.repeatSeriesId == null);
   return <article className={`board-card ${note.completed ? "completed" : ""} ${dragging ? "drag-placeholder" : ""} ${drop ? `drop-${drop}` : ""}`}
     data-note-id={note.id} onClick={onOpen}>
-    {note.priority === "high" && <i className="high-priority-mark" />}
+    {!minimal && note.priority === "high" && <i className="high-priority-mark" />}
     <div className="board-card-mainline">
       <button className="board-card-drag" aria-label="拖动事项" onClick={(event) => event.stopPropagation()}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}><GripVertical size={14} /></button>
@@ -360,13 +361,12 @@ function BoardCard({ note, categories, dragging, drop, menuOpen, onMenu, onOpen,
       <div className="board-more-wrap">
         <button className="board-more" aria-label="事项更多操作" onClick={(event) => { event.stopPropagation(); onMenu(); }}><MoreHorizontal size={15} /></button>
         {menuOpen && <div className="board-menu note-menu" onClick={(event) => event.stopPropagation()}>
-          <button onClick={onEdit}><Pencil size={13} />编辑</button>
           <button onClick={() => void onTogglePinned()}>{note.pinned ? <PinOff size={13} /> : <Pin size={13} />}{note.pinned ? "取消置顶" : "置顶"}</button>
           <button className="danger" onClick={onDelete}><Trash2 size={13} />删除</button>
         </div>}
       </div>
     </div>
-    {(category || hasItemSchedule || note.reminderAt || note.priority !== "normal") && <div className="board-card-meta">
+    {!minimal && (category || hasItemSchedule || note.reminderAt || note.priority !== "normal") && <div className="board-card-meta">
       {category && <span className="board-tag"><i style={{ backgroundColor: category.color }} />{category.name}</span>}
       {hasItemSchedule && <span title={note.scheduledTime ? "事项时间" : "事项日期"}><CalendarClock size={10} />{shortSchedule(note)}</span>}
       {note.reminderEnabled && note.reminderAt && <span title="提醒时间"><Bell size={10} />{shortDate(note.reminderAt)}</span>}

@@ -9,11 +9,12 @@ interface Props {
   categories: Category[];
   categoryId: number | null;
   defaultToToday: boolean;
+  minimal?: boolean;
   onCategoryChange: (id: number) => void;
   onAdd: (input: NoteInput) => Promise<boolean>;
 }
 
-export function QuickInput({ categories, categoryId, defaultToToday, onCategoryChange, onAdd }: Props) {
+export function QuickInput({ categories, categoryId, defaultToToday, minimal = false, onCategoryChange, onAdd }: Props) {
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
@@ -101,7 +102,7 @@ export function QuickInput({ categories, categoryId, defaultToToday, onCategoryC
     setSubmitting(false);
   };
 
-  return <div className={`quick-input-wrap ${advancedOpen ? "advanced" : ""} ${categoryMenuOpen ? "category-menu-open" : ""}`}>
+  return <div className={`quick-input-wrap ${minimal ? "minimal" : ""} ${advancedOpen ? "advanced" : ""} ${!minimal && categoryMenuOpen ? "category-menu-open" : ""}`}>
     <div className="quick-input-row">
       <textarea
         ref={inputRef} value={value} rows={1} disabled={submitting}
@@ -115,7 +116,7 @@ export function QuickInput({ categories, categoryId, defaultToToday, onCategoryC
           }
         }}
       />
-      <div className="quick-category-picker" ref={categoryMenuRef}>
+      {!minimal && <div className="quick-category-picker" ref={categoryMenuRef}>
         <button className="quick-category-trigger" type="button" aria-label="选择所属类别"
           aria-haspopup="listbox" aria-expanded={categoryMenuOpen} onClick={() => setCategoryMenuOpen((open) => !open)}>
           {selectedCategory && <i style={{ backgroundColor: selectedCategory.color }} />}
@@ -129,7 +130,7 @@ export function QuickInput({ categories, categoryId, defaultToToday, onCategoryC
             {category.id === categoryId && <Check size={13} />}
           </button>)}
         </div>}
-      </div>
+      </div>}
       <button className={`advanced-trigger icon-tooltip ${advancedOpen ? "selected" : ""}`} type="button"
         onClick={() => setAdvancedOpen((open) => !open)} aria-label="时间与重复设置" aria-expanded={advancedOpen}
         title="时间与重复设置" data-tooltip="时间与重复设置">

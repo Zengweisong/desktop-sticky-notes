@@ -12,6 +12,7 @@ interface Props {
   categories: Category[];
   repeatSeries?: RepeatSeries[];
   loading: boolean;
+  minimal?: boolean;
   showCompleted?: boolean;
   completedExpanded?: boolean;
   onCompletedExpandedChange?: (expanded: boolean) => void;
@@ -25,7 +26,7 @@ interface Props {
 
 type DropTarget = { id: number; position: "before" | "after" };
 
-export function NoteList({ notes, categories, repeatSeries = [], loading, showCompleted = false, completedExpanded = false,
+export function NoteList({ notes, categories, repeatSeries = [], loading, minimal = false, showCompleted = false, completedExpanded = false,
   onCompletedExpandedChange, onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onMove, onDelete }: Props) {
   const [deleteTarget, setDeleteTarget] = useState<Note | null>(null);
   const [draggedId, setDraggedId] = useState<number | null>(null);
@@ -49,7 +50,7 @@ export function NoteList({ notes, categories, repeatSeries = [], loading, showCo
   const renderNotes = (items: Note[], completedGroup = false) => <div className={`note-list ${completedGroup ? "completed-note-list" : ""}`}>{items.map((note, index) => {
       const series = repeatSeries.find((item) => item.id === note.repeatSeriesId);
       return <NoteCard key={note.id} note={note}
-      repeatSeries={series} categories={categories} isNew={!completedGroup && index === 0}
+      repeatSeries={series} categories={categories} minimal={minimal} isNew={!completedGroup && index === 0}
       dragging={draggedId === note.id} dropPosition={dropTarget?.id === note.id ? dropTarget.position : null}
       dragOffsetY={draggedId === note.id ? dragOffsetY : 0}
       onPointerDown={(event) => {

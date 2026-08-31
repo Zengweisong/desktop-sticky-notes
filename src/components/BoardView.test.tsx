@@ -55,6 +55,31 @@ describe("BoardView column menus", () => {
     expect(container.querySelector('[title="事项时间"]')).toBeNull();
     await act(async () => root.unmount());
   });
+
+  it("shows title-only cards in minimal mode and opens the editor from the card", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const note = { ...repeatNote, repeatSeriesId: null, categoryId: 1, priority: "high" as const,
+      scheduledAt: "2026-07-23T10:00:00.000Z", scheduledTime: "10:00" };
+
+    await act(async () => root.render(<BoardView columns={columns} notes={[note]}
+      categories={[{ id: 1, name: "工作", color: "#5794d8", icon: null, sortOrder: 10, createdAt: "2026-07-18", isSystem: false }]}
+      repeatSeries={[]} minimal loading={false} selectedColumnId={null} onSelectedColumnChange={vi.fn()}
+      onAdd={async () => true} onEdit={async () => true} onToggleCompleted={async () => true}
+      onTogglePinned={async () => true} onToggleRepeatActive={async () => true} onDelete={async () => true}
+      onMoveNote={async () => true} onCreateColumn={async () => true} onRenameColumn={async () => true}
+      onDeleteColumn={async () => true} onMoveColumn={async () => true} />));
+
+    const card = container.querySelector<HTMLElement>(".board-card")!;
+    expect(card.querySelector(".board-card-meta")).toBeNull();
+    expect(card.querySelector(".high-priority-mark")).toBeNull();
+    expect(card.textContent).toContain(note.title);
+    await act(async () => card.click());
+    expect(container.querySelector(".note-edit-form")).not.toBeNull();
+    expect(container.querySelector('button[title="编辑"]')).toBeNull();
+    await act(async () => root.unmount());
+  });
 });
 
 const columns: BoardColumn[] = [

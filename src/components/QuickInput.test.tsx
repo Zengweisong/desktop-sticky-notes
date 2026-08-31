@@ -66,6 +66,21 @@ describe("QuickInput category menu", () => {
     await act(async () => root.unmount());
   });
 
+  it("hides the category picker and keeps a compact row in minimal mode", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => root.render(<QuickInput categories={categories} categoryId={1} minimal
+      defaultToToday onCategoryChange={vi.fn()} onAdd={vi.fn().mockResolvedValue(true)} />));
+
+    expect(container.querySelector('[aria-label="选择所属类别"]')).toBeNull();
+    expect(container.querySelector(".quick-input-wrap")?.classList.contains("minimal")).toBe(true);
+    expect(container.querySelector('[aria-label="时间与重复设置"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="添加事项"]')).not.toBeNull();
+    await act(async () => root.unmount());
+  });
+
   it("does not add an item while Enter is confirming IME input", async () => {
     container = document.createElement("div");
     document.body.append(container);

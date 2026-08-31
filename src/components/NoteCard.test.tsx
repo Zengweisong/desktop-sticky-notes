@@ -142,6 +142,34 @@ describe("NoteCard editor keyboard behavior", () => {
     await act(async () => root.unmount());
   });
 
+  it("opens the full editor from the item itself without an edit button", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    await act(async () => root.render(<NoteCard {...props(vi.fn().mockResolvedValue(true))} />));
+
+    expect(container.querySelector('button[title="编辑"]')).toBeNull();
+    await act(async () => container!.querySelector<HTMLElement>(".note-main")!.click());
+    expect(container.querySelector(".note-edit-form")).not.toBeNull();
+    await act(async () => root.unmount());
+  });
+
+  it("shows only the title information in minimal mode", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const richNote = { ...note, priority: "high" as const, scheduledDate: "2026-08-30", details: "不应显示" };
+
+    await act(async () => root.render(<NoteCard {...props(vi.fn().mockResolvedValue(true))} note={richNote} minimal />));
+
+    expect(container.querySelector(".note-main")?.textContent).toBe(richNote.title);
+    expect(container.querySelector(".note-details")).toBeNull();
+    expect(container.querySelector(".note-meta")).toBeNull();
+    expect(container.querySelector(".expand-button")).toBeNull();
+    await act(async () => root.unmount());
+  });
+
   it("switches between live, source, and reading modes", async () => {
     container = document.createElement("div");
     document.body.append(container);

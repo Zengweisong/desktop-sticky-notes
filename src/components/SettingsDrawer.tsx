@@ -94,6 +94,14 @@ export function SettingsDrawer(props: Props) {
         </div>
         <div className="setting-block"><div className="setting-heading"><span>事项显示</span></div>
           <div className="setting-list display-setting-list">
+            <Toggle label="极简模式" description="各视图中的事项只显示标题；点击事项可查看并编辑全部信息。"
+              checked={props.settings.minimalMode}
+              onChange={(minimalMode) => void props.onUpdate({ minimalMode })} />
+            <Toggle label="启动时只显示今天事项" description="开启后立即切换到“今天”，以后每次启动也默认如此；仍可临时选择其他筛选。"
+              checked={props.settings.showTodayOnStartup}
+              onChange={(showTodayOnStartup) => void props.onUpdate(showTodayOnStartup
+                ? { showTodayOnStartup, taskTimeFilter: "today" }
+                : { showTodayOnStartup })} />
             <Toggle label="显示已完成事项" description="开启后，在列表底部显示已经完成的事项。"
               checked={props.settings.showCompleted} onChange={(showCompleted) => void props.onUpdate({ showCompleted })} />
           </div>

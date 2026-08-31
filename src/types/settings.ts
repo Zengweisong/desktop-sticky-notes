@@ -23,6 +23,8 @@ export interface AppSettings {
   showOnStartup: boolean;
   showCompleted: boolean;
   completedSectionExpanded: boolean;
+  showTodayOnStartup: boolean;
+  minimalMode: boolean;
   quickAddDefaultsToToday: boolean;
   shortcut: string;
   fontSize: FontSizePreference;
@@ -45,6 +47,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showOnStartup: true,
   showCompleted: false,
   completedSectionExpanded: false,
+  showTodayOnStartup: true,
+  minimalMode: false,
   quickAddDefaultsToToday: true,
   shortcut: "Ctrl+Alt+Space",
   fontSize: "medium",

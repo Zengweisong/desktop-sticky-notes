@@ -410,7 +410,7 @@ export async function importNotes(value: unknown): Promise<void> {
       for (const note of value.notes) {
         await insertImportedNote(db, note.title, note.details, categoryMap.get(note.categoryId || -1) || fallbackId,
           note.completed, note.pinned, note.priority, note.createdAt, note.updatedAt, note.completedAt, note.dueAt, note.sortOrder,
-          note.scheduledAt ?? null, note.scheduledDate ?? null, note.scheduledTime ?? null,
+          note.scheduledAt ?? null, note.scheduledDate, note.scheduledTime,
           note.reminderEnabled ?? false, note.reminderAt ?? null,
           note.reminderOffsetMinutes ?? 0, note.reminderTriggeredAt ?? null,
           seriesMap.get(note.repeatSeriesId || -1) || null, note.repeatOccurrenceAt ?? null);
@@ -434,7 +434,7 @@ async function insertImportedNote(
   db: Awaited<ReturnType<typeof getDatabase>>, title: string, details: string | null, categoryId: number,
   completed: boolean, pinned: boolean, priority: NotePriority, createdAt: string, updatedAt: string,
   completedAt: string | null, dueAt: string | null, sortOrder: number,
-  scheduledAt: string | null, scheduledDate: string | null, scheduledTime: string | null,
+  scheduledAt: string | null, scheduledDate: string | null | undefined, scheduledTime: string | null | undefined,
   reminderEnabled: boolean, reminderAt: string | null,
   reminderOffsetMinutes: number, reminderTriggeredAt: string | null,
   repeatSeriesId: number | null, repeatOccurrenceAt: string | null
