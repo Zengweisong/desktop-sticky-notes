@@ -32,6 +32,17 @@ describe("CalendarView", () => {
     expect(container.querySelector(".board-detail-dialog")?.textContent).toContain("提交周报");
   });
 
+  it("shows title-only entries in minimal mode and opens them directly for editing", async () => {
+    ({ container, root } = await renderCalendar(undefined, undefined, true));
+    const task = container.querySelector<HTMLButtonElement>('.calendar-task[data-note-id="1"]')!;
+
+    expect(task.textContent).toBe("提交周报");
+    expect(task.querySelector("i")).toBeNull();
+    expect(task.querySelector("time")).toBeNull();
+    await act(async () => task.click());
+    expect(container.querySelector(".note-edit-form")).not.toBeNull();
+  });
+
   it("navigates months and creates a dated task without creating an empty record", async () => {
     const onAdd = vi.fn(async (_input: NoteInput) => true);
     ({ container, root } = await renderCalendar(onAdd));
@@ -183,13 +194,14 @@ describe("CalendarView", () => {
 
 async function renderCalendar(
   onAdd = vi.fn(async (_input: NoteInput) => true),
-  onReschedule = vi.fn(async () => true)
+  onReschedule = vi.fn(async () => true),
+  minimal = false
 ) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => root.render(<CalendarView notes={notes} categories={categories} repeatSeries={[]}
-    loading={false} defaultCategoryId={1} timeFilter="all" categoryId={null} search="" priority="all"
+    loading={false} minimal={minimal} defaultCategoryId={1} timeFilter="all" categoryId={null} search="" priority="all"
     onAdd={onAdd} onEdit={async () => true} onToggleCompleted={async () => true}
     onTogglePinned={async () => true} onToggleRepeatActive={async () => true} onDelete={async () => true}
     onReschedule={onReschedule}

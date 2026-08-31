@@ -293,12 +293,14 @@ export default function App() {
     || Boolean(prefs.settings.taskSearch) || prefs.settings.taskPriorityFilter !== "all";
   const visibleListCount = visibleNotes.filter((note) => !note.completed || prefs.settings.showCompleted).length;
 
-  return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize} view-${prefs.settings.viewMode} ${(settingsOpen || categoriesOpen) ? "overlay-open" : ""}`}
+  return <main className={`app-shell theme-${prefs.settings.theme} font-size-${prefs.settings.fontSize} view-${prefs.settings.viewMode} ${prefs.settings.minimalMode ? "minimal-mode" : ""} ${(settingsOpen || categoriesOpen) ? "overlay-open" : ""}`}
     style={{ "--panel-opacity": String(prefs.settings.opacity / 100) } as React.CSSProperties}>
     <section className={`panel ${prefs.settings.viewMode === "board" ? "board-mode" : ""} ${prefs.settings.viewMode === "calendar" ? "calendar-mode" : ""}`}>
       <CustomTitleBar alwaysOnTop={prefs.settings.alwaysOnTop} onToggleTop={toggleAlwaysOnTop}
         onOpenSettings={() => { setCategoriesOpen(false); setSettingsOpen(true); }} />
       <div className="quick-area"><QuickInput categories={categories.categories} categoryId={quickCategoryId}
+        defaultToToday={prefs.settings.quickAddDefaultsToToday}
+        minimal={prefs.settings.minimalMode}
         onCategoryChange={setQuickCategoryId} onAdd={(input) => notes.add({ ...input,
           boardColumnId: prefs.settings.viewMode === "board" ? selectedBoardColumnId || TODO_COLUMN_ID : input.boardColumnId
         })} /></div>
@@ -316,6 +318,7 @@ export default function App() {
           prefs.settings.viewMode === "list" ? <div className="filtered-list" key={`${prefs.settings.taskTimeFilter}:${prefs.settings.taskCategoryFilterId ?? "all"}`}>
             <NoteList notes={visibleNotes} categories={categories.categories} repeatSeries={notes.repeatSeries}
               loading={notes.loading || categories.loading}
+              minimal={prefs.settings.minimalMode}
               showCompleted={prefs.settings.showCompleted} completedExpanded={prefs.settings.completedSectionExpanded}
               onCompletedExpandedChange={(completedSectionExpanded) => void prefs.update({ completedSectionExpanded })}
               onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
@@ -324,6 +327,7 @@ export default function App() {
               onMove={notes.move} onDelete={notes.remove} />
           </div> : prefs.settings.viewMode === "board" ? <BoardView columns={board.columns} notes={visibleNotes} categories={categories.categories}
             repeatSeries={notes.repeatSeries} loading={notes.loading || categories.loading || board.loading}
+            minimal={prefs.settings.minimalMode}
             selectedColumnId={selectedBoardColumnId} onSelectedColumnChange={setSelectedBoardColumnId}
             onAdd={notes.add} onEdit={notes.edit}
             onToggleCompleted={(note) => notes.toggleCompleted(note.id, !note.completed)}
@@ -333,6 +337,7 @@ export default function App() {
             onRenameColumn={board.rename} onDeleteColumn={board.remove} onMoveColumn={board.reorder} />
           : <CalendarView notes={notes.notes} categories={categories.categories} repeatSeries={notes.repeatSeries}
             loading={notes.loading || categories.loading} defaultCategoryId={quickCategoryId}
+            minimal={prefs.settings.minimalMode}
             timeFilter={prefs.settings.taskTimeFilter} categoryId={prefs.settings.taskCategoryFilterId}
             search={prefs.settings.taskSearch} priority={prefs.settings.taskPriorityFilter}
             onAdd={notes.add} onEdit={notes.edit}

@@ -8,6 +8,7 @@ import type { RepeatSeries } from "../types/repeat";
 import { ensureBoardPlacement, setBoardNoteCompleted } from "./boardService";
 import { COMPLETED_COLUMN_ID, TODO_COLUMN_ID } from "../types/board";
 import { normalizedSchedule, schedulePartsFromIso, scheduledAtFromParts } from "./noteDateService";
+import { collapseRepeatSeriesNotes } from "./noteFilterService";
 
 const SELECT_FIELDS = `id, title, content, details, category_id, completed, pinned, priority,
   created_at, updated_at, completed_at, due_at, sort_order, scheduled_at, scheduled_date, scheduled_time,
@@ -65,13 +66,17 @@ async function resolveCategoryId(categoryId?: number | null): Promise<number> {
 
 export async function listNotes(): Promise<Note[]> {
   try {
-    const db = await getDatabase();
-    await ensureBoardPlacement();
-    return (await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes ${ORDER_BY}`)).map(fromRow);
+    return collapseRepeatSeriesNotes(await listAllNotes());
   } catch (error) {
     console.error("读取事项失败:", error);
     throw new Error("读取事项失败");
   }
+}
+
+async function listAllNotes(): Promise<Note[]> {
+  const db = await getDatabase();
+  await ensureBoardPlacement();
+  return (await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes ${ORDER_BY}`)).map(fromRow);
 }
 
 export async function createNote(input: NoteInput): Promise<Note> {
@@ -328,7 +333,7 @@ export async function clearCompletedNotes(): Promise<void> {
 }
 
 export async function exportNotes(): Promise<ExportPayloadV3> {
-  const [notes, categories, repeatSeries] = await Promise.all([listNotes(), listCategories(), listRepeatSeries()]);
+  const [notes, categories, repeatSeries] = await Promise.all([listAllNotes(), listCategories(), listRepeatSeries()]);
   return { version: 3, exportedAt: new Date().toISOString(), notes, categories, repeatSeries };
 }
 
@@ -405,7 +410,7 @@ export async function importNotes(value: unknown): Promise<void> {
       for (const note of value.notes) {
         await insertImportedNote(db, note.title, note.details, categoryMap.get(note.categoryId || -1) || fallbackId,
           note.completed, note.pinned, note.priority, note.createdAt, note.updatedAt, note.completedAt, note.dueAt, note.sortOrder,
-          note.scheduledAt ?? null, note.scheduledDate ?? null, note.scheduledTime ?? null,
+          note.scheduledAt ?? null, note.scheduledDate, note.scheduledTime,
           note.reminderEnabled ?? false, note.reminderAt ?? null,
           note.reminderOffsetMinutes ?? 0, note.reminderTriggeredAt ?? null,
           seriesMap.get(note.repeatSeriesId || -1) || null, note.repeatOccurrenceAt ?? null);
@@ -429,7 +434,7 @@ async function insertImportedNote(
   db: Awaited<ReturnType<typeof getDatabase>>, title: string, details: string | null, categoryId: number,
   completed: boolean, pinned: boolean, priority: NotePriority, createdAt: string, updatedAt: string,
   completedAt: string | null, dueAt: string | null, sortOrder: number,
-  scheduledAt: string | null, scheduledDate: string | null, scheduledTime: string | null,
+  scheduledAt: string | null, scheduledDate: string | null | undefined, scheduledTime: string | null | undefined,
   reminderEnabled: boolean, reminderAt: string | null,
   reminderOffsetMinutes: number, reminderTriggeredAt: string | null,
   repeatSeriesId: number | null, repeatOccurrenceAt: string | null

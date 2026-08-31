@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bell, BookOpen, Calendar, Check, Code2, GripVertical, Pencil, Pin, PinOff, Repeat2, Sparkles, Trash2 } from "lucide-react";
+import { Bell, BookOpen, Calendar, Check, Code2, GripVertical, Pin, PinOff, Repeat2, Sparkles, Trash2 } from "lucide-react";
 import type { Category } from "../types/category";
 import type { Note, NotePriority, NoteUpdate } from "../types/note";
 import type { RepeatSeries } from "../types/repeat";
@@ -27,12 +27,13 @@ interface Props {
   onEdit: (input: NoteUpdate) => Promise<boolean>;
   onRequestDelete: () => void;
   startEditing?: boolean;
+  minimal?: boolean;
   /** Calendar-only projected occurrence. It edits the series without creating a database row. */
   virtualOccurrence?: boolean;
 }
 
 export function NoteCard({ note, repeatSeries, categories, isNew, dragging, dragOffsetY = 0, dropPosition, onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
-  onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onRequestDelete, startEditing = false, virtualOccurrence = false }: Props) {
+  onToggleCompleted, onTogglePinned, onToggleRepeatActive, onEdit, onRequestDelete, startEditing = false, minimal = false, virtualOccurrence = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(startEditing);
   const [title, setTitle] = useState(note.title);
@@ -110,8 +111,18 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
   const category = categories.find((item) => item.id === note.categoryId);
   const hasItemSchedule = Boolean(note.scheduledDate && note.repeatSeriesId == null);
 
-  return <article className={`note-card ${note.completed ? "completed" : ""} ${isNew ? "note-enter" : ""} ${dragging ? "dragging" : ""} ${dropPosition ? `drop-${dropPosition}` : ""}`}
-    data-note-id={note.id} style={{ "--drag-offset-y": `${dragOffsetY}px` } as React.CSSProperties}>
+  return <article className={`note-card ${minimal ? "minimal" : ""} ${note.completed ? "completed" : ""} ${isNew ? "note-enter" : ""} ${dragging ? "dragging" : ""} ${dropPosition ? `drop-${dropPosition}` : ""}`}
+    data-note-id={note.id} tabIndex={editing ? undefined : 0} aria-label={editing ? undefined : `查看并编辑：${note.title}`}
+    onClick={(event) => {
+      if (editing || (event.target as Element).closest("button, a, input, textarea, select, [contenteditable='true']")) return;
+      startEdit();
+    }}
+    onKeyDown={(event) => {
+      if (!editing && event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault(); startEdit();
+      }
+    }}
+    style={{ "--drag-offset-y": `${dragOffsetY}px` } as React.CSSProperties}>
     <button className="drag-handle" disabled={editing || busy || virtualOccurrence} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} aria-label="拖动调整顺序" title="拖动调整顺序"><GripVertical size={14} /></button>
     <button className={`check-button ${note.completed ? "checked" : ""}`} disabled={busy || virtualOccurrence}
@@ -167,18 +178,18 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
         <div className="note-edit-actions"><span>Enter 保存 · Esc 取消</span><button onClick={cancel}>取消</button><button onClick={() => void save()}>保存</button></div>
       </div> : <>
         <p ref={contentRef} className={expanded ? "expanded" : "clamped"}>{note.title}</p>
-        {note.details && <div ref={detailsRef} className={`note-details ${expanded ? "" : "details-clamped"}`}>
+        {!minimal && note.details && <div ref={detailsRef} className={`note-details ${expanded ? "" : "details-clamped"}`}>
           <MarkdownContent content={note.details} />
         </div>}
-        {(overflows || expanded || reminderVisible || repeatSeries) && <button className="expand-button" onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "查看详情"}</button>}
-        <div className="note-meta">
-          {category && <span className="category-badge" title={category.name}><i style={{ backgroundColor: category.color }} />{category.name}</span>}
+        {!minimal && (overflows || expanded || reminderVisible || repeatSeries) && <button className="expand-button" onClick={() => setExpanded(!expanded)}>{expanded ? "收起" : "查看详情"}</button>}
+        {!minimal && <div className="note-meta">
+          {category && <span className={`category-badge ${category.isSystem ? "system-category" : ""}`} title={category.name}><i style={{ backgroundColor: category.color }} />{category.name}</span>}
           {note.priority !== "normal" && <span className={`priority-badge ${note.priority}`}>{note.priority === "high" ? "高优先级" : "低优先级"}</span>}
           {hasItemSchedule && <span className={`due-badge ${isPlanPast(note) ? "overdue" : ""}`}><Calendar size={11} />{formatPlanTime(note)}</span>}
           {repeatSeries && <span className="repeat-badge"><Repeat2 size={11} />{describeRepeat(repeatSeries)}</span>}
           {reminderVisible && <span className="reminder-badge"><Bell size={11} />{formatReminder(note, Boolean(repeatSeries))}</span>}
-        </div>
-        {expanded && (reminderVisible || repeatSeries) && <div className="note-schedule-details">
+        </div>}
+        {!minimal && expanded && (reminderVisible || repeatSeries) && <div className="note-schedule-details">
           <div><b>事项时间</b><span>{hasItemSchedule ? formatPlanTime(note) : "未设置"}</span></div>
           {reminderVisible && <div><b>提醒</b><span>{formatReminder(note, Boolean(repeatSeries))}</span></div>}
           <div><b>重复规则</b><span>{repeatSeries ? `${describeRepeat(repeatSeries)} · ${repeatSeries.active ? "进行中" : "已暂停"}` : "不重复"}</span></div>
@@ -189,7 +200,6 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
     </div>
     {!editing && <div className="note-actions">
       {!virtualOccurrence && <button onClick={() => void toggle(onTogglePinned)} title={note.pinned ? "取消置顶" : "置顶"}>{note.pinned ? <PinOff size={15} /> : <Pin size={15} />}</button>}
-      <button onClick={startEdit} title="编辑"><Pencil size={15} /></button>
       {!virtualOccurrence && <button className="danger-text" onClick={onRequestDelete} title="删除"><Trash2 size={15} /></button>}
     </div>}
     {note.pinned && !editing && <Pin className="pin-marker" size={12} fill="currentColor" />}

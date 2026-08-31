@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Note } from "../types/note";
-import { filterNotes } from "./noteFilterService";
+import { collapseRepeatSeriesNotes, filterNotes } from "./noteFilterService";
 
 describe("noteFilterService", () => {
   const today = new Date(2026, 6, 17, 12, 0);
@@ -28,6 +28,20 @@ describe("noteFilterService", () => {
     expect(filterNotes(notes, "overdue", 1, today).map(({ id }) => id)).toEqual([7]);
     expect(filterNotes(notes, "future", 1, today).map(({ id }) => id)).toEqual([6]);
     expect(filterNotes(notes, "undated", 1, today).map(({ id }) => id)).toEqual([2, 3, 7, 8]);
+  });
+
+  it("keeps only the latest item from each repeat series", () => {
+    const oldOccurrence = {
+      ...makeNote(9, 1, false, { scheduledAt: yesterdayAt }),
+      repeatSeriesId: 7, repeatOccurrenceAt: yesterdayAt
+    };
+    const latestOccurrence = {
+      ...makeNote(10, 1, true, { scheduledAt: todayAt }),
+      repeatSeriesId: 7, repeatOccurrenceAt: todayAt
+    };
+
+    expect(collapseRepeatSeriesNotes([oldOccurrence, notes[0], latestOccurrence]).map(({ id }) => id))
+      .toEqual([1, 10]);
   });
 });
 

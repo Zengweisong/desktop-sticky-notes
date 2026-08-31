@@ -36,6 +36,51 @@ describe("quick category menu layering", () => {
   });
 });
 
+describe("main list scrolling", () => {
+  it("keeps wheel scrolling while hiding the WebView scrollbar", () => {
+    const viewportRule = css.match(/\.content-viewport\s*\{([^}]*)\}/)?.[1] ?? "";
+    const scrollbarRule = css.match(/\.content-viewport::\-webkit-scrollbar\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(viewportRule).toContain("overflow-y: auto");
+    expect(viewportRule).toContain("scrollbar-width: none");
+    expect(scrollbarRule).toContain("width: 0");
+  });
+});
+
+describe("compact filter popover", () => {
+  it("anchors the filter panel to the full navigation row at narrow widths", () => {
+    const compactStart = css.indexOf("@media (max-width: 400px)");
+    const compactEnd = css.indexOf("@media (max-width: 620px)", compactStart);
+    const compactRules = compactStart >= 0 ? css.slice(compactStart, compactEnd) : "";
+    const pickerRule = compactRules.match(/\.category-filter-picker\s*\{([^}]*)\}/)?.[1] ?? "";
+    const popoverRule = compactRules.match(/\.category-filter-popover\s*\{([^}]*)\}/)?.[1] ?? "";
+    const coveredListRule = compactRules.match(/\.list-area:has\(\.category-filter-popover\)\s*\{([^}]*)\}/)?.[1] ?? "";
+    const coveredViewportRule = compactRules.match(/\.list-area:has\(\.category-filter-popover\) \.content-viewport\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(pickerRule).toContain("position: static");
+    expect(popoverRule).toContain("left: 0");
+    expect(popoverRule).toContain("right: 4px");
+    expect(popoverRule).toContain("width: auto");
+    expect(coveredListRule).toContain("overflow-y: hidden");
+    expect(coveredViewportRule).toContain("overflow-y: hidden");
+  });
+});
+
+describe("minimal mode layout", () => {
+  it("hides the app title and compacts the title, input, and filter rows", () => {
+    const panelRule = css.match(/\.minimal-mode \.panel\s*\{([^}]*)\}/)?.[1] ?? "";
+    const titleRule = css.match(/\.minimal-mode \.app-title\s*\{([^}]*)\}/)?.[1] ?? "";
+    const inputRule = css.match(/\.quick-input-wrap\.minimal \.quick-input-row\s*\{([^}]*)\}/)?.[1] ?? "";
+    const navigationRule = css.match(/\.minimal-mode \.category-nav\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(panelRule).toContain("grid-template-rows: 40px");
+    expect(titleRule).toContain("display: none");
+    expect(inputRule).toContain("minmax(0, 1fr) 32px 38px");
+    expect(inputRule).toContain("gap: 4px");
+    expect(navigationRule).toContain("min-height: 30px");
+  });
+});
+
 describe("schedule form layout", () => {
   it("keeps the advanced panel inside its parent width", () => {
     const panelRule = css.match(/\.quick-advanced-panel\s*\{([^}]*)\}/)?.[1] ?? "";

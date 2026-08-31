@@ -87,6 +87,9 @@ export function normalizeSettings(value: unknown): AppSettings {
     showOnStartup: booleanValue(saved.showOnStartup, DEFAULT_SETTINGS.showOnStartup),
     showCompleted: booleanValue(saved.showCompleted, DEFAULT_SETTINGS.showCompleted),
     completedSectionExpanded: booleanValue(saved.completedSectionExpanded, DEFAULT_SETTINGS.completedSectionExpanded),
+    showTodayOnStartup: booleanValue(saved.showTodayOnStartup, DEFAULT_SETTINGS.showTodayOnStartup),
+    minimalMode: booleanValue(saved.minimalMode, DEFAULT_SETTINGS.minimalMode),
+    quickAddDefaultsToToday: booleanValue(saved.quickAddDefaultsToToday, DEFAULT_SETTINGS.quickAddDefaultsToToday),
     shortcut: typeof saved.shortcut === "string" && saved.shortcut.trim().length > 0 && saved.shortcut.length <= 80
       ? saved.shortcut
       : DEFAULT_SETTINGS.shortcut,
@@ -116,15 +119,20 @@ export function normalizeSettings(value: unknown): AppSettings {
   };
 }
 
+export function settingsForStartup(value: unknown): AppSettings {
+  const settings = normalizeSettings(value);
+  return settings.showTodayOnStartup ? { ...settings, taskTimeFilter: "today" } : settings;
+}
+
 export async function loadSettings(): Promise<AppSettings> {
   try {
     const db = await getDatabase();
     const rows = await db.select<Array<{ value: string }>>("SELECT value FROM settings WHERE key = 'app'");
-    if (!rows.length) return structuredClone(DEFAULT_SETTINGS);
-    return normalizeSettings(JSON.parse(rows[0].value));
+    if (!rows.length) return settingsForStartup(DEFAULT_SETTINGS);
+    return settingsForStartup(JSON.parse(rows[0].value));
   } catch (error) {
     console.error("读取设置失败，已恢复默认设置:", error);
-    return structuredClone(DEFAULT_SETTINGS);
+    return settingsForStartup(DEFAULT_SETTINGS);
   }
 }
 

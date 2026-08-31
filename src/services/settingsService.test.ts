@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "../types/settings";
-import { normalizeSettings } from "./settingsService";
+import { normalizeSettings, settingsForStartup } from "./settingsService";
 
 describe("normalizeSettings", () => {
   it("uses safe defaults for missing or damaged configuration", () => {
@@ -62,6 +62,30 @@ describe("normalizeSettings", () => {
       showCompleted: true,
       completedSectionExpanded: true
     });
+  });
+
+  it("shows today's items on startup by default and persists an opt-out", () => {
+    expect(settingsForStartup({ taskTimeFilter: "future" })).toMatchObject({
+      showTodayOnStartup: true,
+      taskTimeFilter: "today"
+    });
+    expect(settingsForStartup({ showTodayOnStartup: false, taskTimeFilter: "future" })).toMatchObject({
+      showTodayOnStartup: false,
+      taskTimeFilter: "future"
+    });
+  });
+
+  it("defaults quick additions to today and persists an opt-out", () => {
+    expect(normalizeSettings({})).toMatchObject({ quickAddDefaultsToToday: true });
+    expect(normalizeSettings({ quickAddDefaultsToToday: false })).toMatchObject({
+      quickAddDefaultsToToday: false
+    });
+  });
+
+  it("defaults minimal mode off and restores an enabled preference", () => {
+    expect(normalizeSettings({})).toMatchObject({ minimalMode: false });
+    expect(normalizeSettings({ minimalMode: true })).toMatchObject({ minimalMode: true });
+    expect(normalizeSettings({ minimalMode: "yes" })).toMatchObject({ minimalMode: false });
   });
 
   it("persists calendar view and supplies its dedicated window state", () => {

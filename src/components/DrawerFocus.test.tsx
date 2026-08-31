@@ -56,6 +56,22 @@ describe("drawer focus", () => {
     expect(onUpdate).toHaveBeenCalledWith({ showCompleted: true });
   });
 
+  it("enables the today startup view and applies it immediately", async () => {
+    vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(() => {});
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    await render(<SettingsDrawer open settings={{ ...DEFAULT_SETTINGS, showTodayOnStartup: false }} completedCount={0} onClose={() => {}}
+      onUpdate={onUpdate} onClearCompleted={async () => true}
+      onLaunchOnStartupChange={async () => true} onShortcutChange={async () => true}
+      onImported={async () => {}} toast={() => {}} />);
+
+    const row = [...container!.querySelectorAll(".toggle-row")]
+      .find((item) => item.textContent?.includes("启动时只显示今天事项"))!;
+    const todayToggle = row.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(todayToggle.checked).toBe(false);
+    await act(async () => todayToggle.click());
+    expect(onUpdate).toHaveBeenCalledWith({ showTodayOnStartup: true, taskTimeFilter: "today" });
+  });
+
   async function render(element: ReactNode) {
     container = document.createElement("div");
     document.body.append(container);

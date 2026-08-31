@@ -8,16 +8,18 @@ import { localDateKey, scheduledAtFromParts } from "../services/noteDateService"
 interface Props {
   categories: Category[];
   categoryId: number | null;
+  defaultToToday: boolean;
+  minimal?: boolean;
   onCategoryChange: (id: number) => void;
   onAdd: (input: NoteInput) => Promise<boolean>;
 }
 
-export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: Props) {
+export function QuickInput({ categories, categoryId, defaultToToday, minimal = false, onCategoryChange, onAdd }: Props) {
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [schedule, setSchedule] = useState<NoteInput>(() => initialSchedule());
+  const [schedule, setSchedule] = useState<NoteInput>(() => initialSchedule(defaultToToday));
   const scheduleDateTouched = useRef(false);
   const currentDateKey = useRef(localDateKey(new Date()));
   const composing = useRef(false);
@@ -32,12 +34,23 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
   }, []);
 
   useEffect(() => {
+    if (scheduleDateTouched.current) return;
+    const scheduledDate = defaultToToday ? localDateKey(new Date()) : null;
+    setSchedule((current) => ({
+      ...current,
+      scheduledDate,
+      scheduledTime: scheduledDate ? current.scheduledTime : null,
+      scheduledAt: scheduledAtFromParts(scheduledDate, scheduledDate ? current.scheduledTime : null)
+    }));
+  }, [defaultToToday]);
+
+  useEffect(() => {
     let timer = 0;
     const refreshDefaultDate = () => {
       const now = new Date();
       const nextDate = localDateKey(now);
       if (nextDate !== currentDateKey.current) {
-        if (!scheduleDateTouched.current) {
+        if (defaultToToday && !scheduleDateTouched.current) {
           setSchedule((current) => ({
             ...current,
             scheduledDate: nextDate,
@@ -58,7 +71,7 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
       window.removeEventListener("focus", refreshDefaultDate);
       document.removeEventListener("visibilitychange", refreshDefaultDate);
     };
-  }, []);
+  }, [defaultToToday]);
 
   useEffect(() => {
     if (!categoryMenuOpen) return;
@@ -83,13 +96,13 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
     if (ok) {
       setValue(""); setAdvancedOpen(false);
       scheduleDateTouched.current = false;
-      setSchedule(initialSchedule());
+      setSchedule(initialSchedule(defaultToToday));
       inputRef.current?.focus();
     }
     setSubmitting(false);
   };
 
-  return <div className={`quick-input-wrap ${advancedOpen ? "advanced" : ""} ${categoryMenuOpen ? "category-menu-open" : ""}`}>
+  return <div className={`quick-input-wrap ${minimal ? "minimal" : ""} ${advancedOpen ? "advanced" : ""} ${!minimal && categoryMenuOpen ? "category-menu-open" : ""}`}>
     <div className="quick-input-row">
       <textarea
         ref={inputRef} value={value} rows={1} disabled={submitting}
@@ -103,7 +116,7 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
           }
         }}
       />
-      <div className="quick-category-picker" ref={categoryMenuRef}>
+      {!minimal && <div className="quick-category-picker" ref={categoryMenuRef}>
         <button className="quick-category-trigger" type="button" aria-label="选择所属类别"
           aria-haspopup="listbox" aria-expanded={categoryMenuOpen} onClick={() => setCategoryMenuOpen((open) => !open)}>
           {selectedCategory && <i style={{ backgroundColor: selectedCategory.color }} />}
@@ -117,7 +130,7 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
             {category.id === categoryId && <Check size={13} />}
           </button>)}
         </div>}
-      </div>
+      </div>}
       <button className={`advanced-trigger icon-tooltip ${advancedOpen ? "selected" : ""}`} type="button"
         onClick={() => setAdvancedOpen((open) => !open)} aria-label="时间与重复设置" aria-expanded={advancedOpen}
         title="时间与重复设置" data-tooltip="时间与重复设置">
@@ -138,11 +151,11 @@ export function QuickInput({ categories, categoryId, onCategoryChange, onAdd }: 
   </div>;
 }
 
-function initialSchedule(): NoteInput {
+function initialSchedule(defaultToToday: boolean): NoteInput {
   return {
     title: "",
     priority: "normal",
-    scheduledDate: localDateKey(new Date()),
+    scheduledDate: defaultToToday ? localDateKey(new Date()) : null,
     scheduledTime: null,
     scheduledAt: null,
     reminderEnabled: false,

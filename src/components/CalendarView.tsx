@@ -23,6 +23,7 @@ interface Props {
   categories: Category[];
   repeatSeries: RepeatSeries[];
   loading: boolean;
+  minimal?: boolean;
   defaultCategoryId: number | null;
   timeFilter: NoteTimeFilter;
   categoryId: number | null;
@@ -45,7 +46,7 @@ type DropTarget = { kind: "date"; date: string } | { kind: "unscheduled" };
 interface DragCandidate { entry: CalendarEntry; pointerId: number; startX: number; startY: number; active: boolean }
 interface DragState { entry: CalendarEntry; pointerX: number; pointerY: number; target: DropTarget | null }
 
-export function CalendarView({ notes, categories, repeatSeries, loading, defaultCategoryId, timeFilter,
+export function CalendarView({ notes, categories, repeatSeries, loading, minimal = false, defaultCategoryId, timeFilter,
   categoryId, search, priority, onAdd, onEdit, onToggleCompleted, onTogglePinned,
   onToggleRepeatActive, onDelete, onReschedule, today }: Props) {
   const [stableToday, setStableToday] = useState(() => new Date(today || new Date()));
@@ -256,8 +257,8 @@ export function CalendarView({ notes, categories, repeatSeries, loading, default
                 onPointerDown={(event) => startDrag(entry, event)} onPointerMove={moveDrag}
                 onPointerUp={finishDrag} onPointerCancel={cancelDrag}
                 onClick={(event) => { event.stopPropagation(); if (suppressClickRef.current === entry.id) return; selectDate(day.key); openEntry(entry); }}>
-                <i style={{ backgroundColor: categoryColor(categories, entry.categoryId) }} />
-                {entry.scheduledTime && <time>{entry.scheduledTime}</time>}<span>{entry.title}</span>{entry.virtual && <Repeat2 size={10} />}
+                {!minimal && <i style={{ backgroundColor: categoryColor(categories, entry.categoryId) }} />}
+                {!minimal && entry.scheduledTime && <time>{entry.scheduledTime}</time>}<span>{entry.title}</span>{!minimal && entry.virtual && <Repeat2 size={10} />}
               </button>)}
               {hiddenCount > 0 && <button type="button" className="calendar-more" onClick={(event) => {
                 event.stopPropagation(); selectDate(day.key);
@@ -279,7 +280,7 @@ export function CalendarView({ notes, categories, repeatSeries, loading, default
             onPointerDown={(event) => startDrag(entry, event)} onPointerMove={moveDrag}
             onPointerUp={finishDrag} onPointerCancel={cancelDrag}
             onClick={() => { if (suppressClickRef.current !== entry.id) setOpenedEntry(entry); }}>
-            <i style={{ backgroundColor: categoryColor(categories, note.categoryId) }} /><span>{note.title}</span>
+            {!minimal && <i style={{ backgroundColor: categoryColor(categories, note.categoryId) }} />}<span>{note.title}</span>
           </button>; })}
           {!undated.length && <p className="calendar-agenda-empty">没有未安排事项</p>}
         </div>
@@ -290,9 +291,9 @@ export function CalendarView({ notes, categories, repeatSeries, loading, default
             data-note-id={entry.note?.id}
             disabled={!entry.note && !entry.sourceNote} title={!entry.note && !entry.sourceNote ? "该系列暂无可编辑实例" : entry.title}
             onClick={() => openEntry(entry)}>
-            <i style={{ backgroundColor: categoryColor(categories, entry.categoryId) }} /><span>{entry.title}</span>
-            {entry.scheduledTime && <time>{entry.scheduledTime}</time>}
-            {entry.virtual && <Repeat2 size={11} />}
+            {!minimal && <i style={{ backgroundColor: categoryColor(categories, entry.categoryId) }} />}<span>{entry.title}</span>
+            {!minimal && entry.scheduledTime && <time>{entry.scheduledTime}</time>}
+            {!minimal && entry.virtual && <Repeat2 size={11} />}
           </button>)}
           {!selectedEntries.length && <p className="calendar-agenda-empty">这一天还没有事项</p>}
         </div>
@@ -318,7 +319,7 @@ export function CalendarView({ notes, categories, repeatSeries, loading, default
         <div className="board-detail-heading"><strong>{openedEntry.virtual ? "重复事项详情" : "事项详情"}</strong>
           <button type="button" aria-label="关闭详情" title="关闭详情" onClick={() => setOpenedEntry(null)}><X size={16} /></button></div>
         <NoteCard key={openedEntry.id} note={openedNote} repeatSeries={openedEntry.series || undefined}
-          virtualOccurrence={openedEntry.virtual} categories={categories}
+          virtualOccurrence={openedEntry.virtual} categories={categories} startEditing
           onPointerDown={() => undefined} onPointerMove={() => undefined} onPointerUp={() => undefined} onPointerCancel={() => undefined}
           onToggleCompleted={() => openedEntry.note ? onToggleCompleted(openedEntry.note) : Promise.resolve(false)}
           onTogglePinned={() => openedEntry.note ? onTogglePinned(openedEntry.note) : Promise.resolve(false)}

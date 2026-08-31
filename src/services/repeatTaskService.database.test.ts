@@ -24,6 +24,27 @@ describe("repeat occurrence persistence", () => {
     expect(inserted).toHaveLength(1);
   });
 
+  it("reuses the existing series item instead of adding another row", async () => {
+    const row = seriesRow("2026-07-16T00:00:00.000Z");
+    const statements: string[] = [];
+    const db = {
+      select: vi.fn(async () => [row]),
+      execute: vi.fn(async (sql: string, values: unknown[] = []) => {
+        statements.push(sql);
+        if (sql.includes("UPDATE repeat_series SET generated_occurrences")) {
+          row.generated_occurrences = Number(values[0]);
+          row.next_occurrence_at = values[1] == null ? null : String(values[1]);
+        }
+        return { rowsAffected: 1, lastInsertId: 0 };
+      })
+    };
+    vi.mocked(getDatabase).mockResolvedValue(db as never);
+
+    await expect(generateDueOccurrences(new Date("2026-07-16T12:00:00.000Z"))).resolves.toBe(1);
+    expect(statements.some((sql) => sql.includes("UPDATE notes SET content"))).toBe(true);
+    expect(statements.some((sql) => sql.includes("INSERT OR IGNORE INTO notes"))).toBe(false);
+  });
+
   it("recalculates the next occurrence from the resume time", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-16T12:00:00.000Z"));
@@ -53,6 +74,7 @@ describe("repeat occurrence persistence", () => {
     const db = {
       select: vi.fn(async () => []),
       execute: vi.fn(async (sql: string, values: unknown[] = []) => {
+        if (sql.includes("UPDATE notes SET content")) return { rowsAffected: 0, lastInsertId: 0 };
         if (/^(BEGIN|COMMIT|ROLLBACK)/.test(sql)) throw "pooled database transaction boundary";
         calls.push([sql, values]);
         return { rowsAffected: 1, lastInsertId: sql.includes("INSERT INTO repeat_series") ? 12 : 13 };
@@ -244,7 +266,7 @@ describe("repeat occurrence persistence", () => {
         return [row];
       }),
       execute: vi.fn(async (sql: string, values: unknown[] = []) => {
-        if (sql.includes("INSERT OR IGNORE INTO notes")) events.push("generate-insert");
+        if (sql.includes("UPDATE notes SET content")) events.push("generate-reuse");
         if (sql.includes("UPDATE repeat_series SET generated_occurrences")) {
           events.push("generate-update");
           row.generated_occurrences = Number(values[0]);
@@ -268,7 +290,7 @@ describe("repeat occurrence persistence", () => {
     await Promise.all([generating, pausing]);
 
     expect(events).toEqual([
-      "generate-select", "generate-insert", "generate-update", "pause-select", "pause-update"
+      "generate-select", "generate-reuse", "generate-update", "pause-select", "pause-update"
     ]);
     expect(row.active).toBe(0);
   });
@@ -279,6 +301,7 @@ function fakeDatabase(row: RepeatSeriesRow, inserted: string[]) {
     select: vi.fn(async () => [row]),
     execute: vi.fn(async (sql: string, values: unknown[] = []) => {
       if (/^(BEGIN|COMMIT|ROLLBACK)/.test(sql)) throw "pooled database transaction boundary";
+      if (sql.includes("UPDATE notes SET content")) return { rowsAffected: 0, lastInsertId: 0 };
       if (sql.includes("INSERT OR IGNORE INTO notes")) {
         inserted.push(String(values[4]));
         return { rowsAffected: 1, lastInsertId: 1 };
