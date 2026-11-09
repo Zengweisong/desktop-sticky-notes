@@ -3,7 +3,6 @@ import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus, Repeat2, X } fro
 import type { Category } from "../types/category";
 import type { Note, NoteInput, NoteUpdate } from "../types/note";
 import type { RepeatSeries } from "../types/repeat";
-import type { NoteTimeFilter } from "../types/filter";
 import type { PriorityFilter } from "../types/settings";
 import {
   buildCalendarEntries,
@@ -16,6 +15,8 @@ import {
 } from "../services/calendarService";
 import { matchesNoteFilters } from "../services/noteFilterService";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { CalendarDatePicker } from "./CalendarDatePicker";
+import { CalendarTimePicker } from "./CalendarTimePicker";
 import { NoteCard } from "./NoteCard";
 
 interface Props {
@@ -25,7 +26,6 @@ interface Props {
   loading: boolean;
   minimal?: boolean;
   defaultCategoryId: number | null;
-  timeFilter: NoteTimeFilter;
   categoryId: number | null;
   search: string;
   priority: PriorityFilter;
@@ -37,6 +37,7 @@ interface Props {
   onDelete: (id: number, scope?: "occurrence" | "series") => Promise<boolean>;
   onReschedule: (note: Note, scheduledDate: string | null) => Promise<boolean>;
   today?: Date;
+  onSelectedDateChange?: (date: string | null) => void;
 }
 
 const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -46,9 +47,9 @@ type DropTarget = { kind: "date"; date: string } | { kind: "unscheduled" };
 interface DragCandidate { entry: CalendarEntry; pointerId: number; startX: number; startY: number; active: boolean }
 interface DragState { entry: CalendarEntry; pointerX: number; pointerY: number; target: DropTarget | null }
 
-export function CalendarView({ notes, categories, repeatSeries, loading, minimal = false, defaultCategoryId, timeFilter,
+export function CalendarView({ notes, categories, repeatSeries, loading, minimal = false, defaultCategoryId,
   categoryId, search, priority, onAdd, onEdit, onToggleCompleted, onTogglePinned,
-  onToggleRepeatActive, onDelete, onReschedule, today }: Props) {
+  onToggleRepeatActive, onDelete, onReschedule, today, onSelectedDateChange }: Props) {
   const [stableToday, setStableToday] = useState(() => new Date(today || new Date()));
   const lastTodayKeyRef = useRef(localDateKey(stableToday));
   const [visibleMonth, setVisibleMonth] = useState(() => monthStart(stableToday));
@@ -70,8 +71,8 @@ export function CalendarView({ notes, categories, repeatSeries, loading, minimal
   const days = useMemo(() => buildMonthGrid(visibleMonth, stableToday), [visibleMonth, stableToday]);
   const range = useMemo(() => calendarRange(days), [days]);
   const entries = useMemo(() => buildCalendarEntries(notes, repeatSeries, range.start, range.end)
-    .filter((entry) => matchesNoteFilters(entry, timeFilter, categoryId, stableToday, search, priority)),
-  [notes, repeatSeries, range.start, range.end, timeFilter, categoryId, stableToday, search, priority]);
+    .filter((entry) => matchesNoteFilters(entry, "all", categoryId, stableToday, search, priority)),
+  [notes, repeatSeries, range.start, range.end, categoryId, stableToday, search, priority]);
   const entriesByDate = useMemo(() => {
     const grouped = new Map<string, CalendarEntry[]>();
     for (const entry of entries) grouped.set(entry.dateKey, [...(grouped.get(entry.dateKey) || []), entry]);
@@ -82,6 +83,10 @@ export function CalendarView({ notes, categories, repeatSeries, loading, minimal
     matchesNoteFilters(note, "undated", categoryId, stableToday, search, priority)),
   [notes, categoryId, stableToday, search, priority]);
   const openedNote = openedEntry ? noteForEntry(openedEntry) : null;
+
+  useEffect(() => {
+    onSelectedDateChange?.(showUnscheduled ? null : selectedDate);
+  }, [selectedDate, showUnscheduled, onSelectedDateChange]);
 
   useEffect(() => {
     if (today) {
@@ -303,12 +308,14 @@ export function CalendarView({ notes, categories, repeatSeries, loading, minimal
             onKeyDown={(event) => {
               if (event.key === "Enter" && (event.nativeEvent.isComposing || event.keyCode === 229)) event.preventDefault();
             }} />
-          <div><label><span>日期</span><input type="date" aria-label="新事项日期" value={draftDate}
-            onChange={(event) => { setDraftDate(event.target.value); setSelectedDate(event.target.value); }} /></label>
-            <div className="calendar-quick-time"><input type="time" aria-label="新事项时间" value={draftTime}
-              onChange={(event) => setDraftTime(event.target.value)} />
-              {draftTime && <button type="button" className="calendar-time-clear" aria-label="清除新事项时间"
-                onClick={() => setDraftTime("")}><X size={10} /></button>}</div>
+          <div><CalendarDatePicker value={draftDate} today={stableToday}
+            onChange={(date) => {
+              setDraftDate(date);
+              if (!date) return;
+              setSelectedDate(date);
+              setVisibleMonth(monthStart(parseDateKey(date)));
+            }} />
+            <CalendarTimePicker value={draftTime} onChange={setDraftTime} />
             <button type="submit" disabled={adding || !draftTitle.trim()} aria-label="添加到所选日期"><Plus size={15} /></button></div>
         </form>
       </>}

@@ -3,7 +3,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, HighlightStyle, indentOnInput, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { markdown } from "@codemirror/lang-markdown";
 import { Compartment, EditorSelection, EditorState, Prec, type Extension } from "@codemirror/state";
-import { Decoration, drawSelection, dropCursor, EditorView, highlightActiveLine, highlightSpecialChars, keymap, placeholder, ViewPlugin, WidgetType, type DecorationSet } from "@codemirror/view";
+import { Decoration, drawSelection, dropCursor, EditorView, highlightSpecialChars, keymap, placeholder, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { GFM } from "@lezer/markdown";
 import { tags } from "@lezer/highlight";
 
@@ -63,7 +63,6 @@ function editorExtensions(disabled: boolean, callbacksRef: React.MutableRefObjec
     dropCursor(),
     indentOnInput(),
     bracketMatching(),
-    highlightActiveLine(),
     markdown({ extensions: GFM }),
     EditorView.lineWrapping,
     editable.of(EditorView.editable.of(!disabled)),
@@ -120,7 +119,6 @@ function editorExtensions(disabled: boolean, callbacksRef: React.MutableRefObjec
       ".cm-content": { caretColor: "var(--accent-strong)" },
       ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--accent-strong)" },
       ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "var(--accent-soft)" },
-      ".cm-activeLine": { backgroundColor: "rgba(var(--card-rgb), .18)" },
       ".cm-panels": { backgroundColor: "rgb(var(--panel-rgb))", color: "var(--text)" },
       ".cm-tooltip": { backgroundColor: "rgb(var(--panel-rgb))", color: "var(--text)", borderColor: "var(--border)" }
     }, { dark: true })
@@ -134,26 +132,16 @@ const livePreview = ViewPlugin.fromClass(class {
     this.decorations = buildLivePreview(view);
   }
 
-  update(update: { view: EditorView; docChanged: boolean; selectionSet: boolean; viewportChanged: boolean }) {
-    if (update.docChanged || update.selectionSet || update.viewportChanged) {
+  update(update: ViewUpdate) {
+    if (update.docChanged || update.focusChanged || update.viewportChanged) {
       this.decorations = buildLivePreview(update.view);
     }
   }
 }, { decorations: (value) => value.decorations });
 
 function buildLivePreview(view: EditorView) {
+  if (view.hasFocus) return Decoration.none;
   const ranges: Array<ReturnType<Decoration["range"]>> = [];
-  const activeLines = new Set<number>();
-  for (const range of view.state.selection.ranges) {
-    let line = view.state.doc.lineAt(range.from);
-    const last = view.state.doc.lineAt(range.to).number;
-    while (line.number <= last) {
-      activeLines.add(line.number);
-      if (line.number === last) break;
-      line = view.state.doc.line(line.number + 1);
-    }
-  }
-  const inactive = (from: number) => !activeLines.has(view.state.doc.lineAt(from).number);
   const decoratedLines = new Set<string>();
   const addLine = (from: number, className: string) => {
     const line = view.state.doc.lineAt(from);
@@ -166,7 +154,6 @@ function buildLivePreview(view: EditorView) {
 
   const tree = ensureSyntaxTree(view.state, view.viewport.to, 50) || syntaxTree(view.state);
   tree.iterate({ enter(node) {
-    if (!inactive(node.from)) return;
     const text = view.state.sliceDoc(node.from, node.to);
     if (/^ATXHeading[1-6]$/.test(node.name)) {
       const level = Number(node.name.charAt(node.name.length - 1));
@@ -201,12 +188,12 @@ function buildLivePreview(view: EditorView) {
       ranges.push(Decoration.replace({ widget: new QuoteWidget() }).range(node.from, node.to));
       addLine(node.from, "cm-live-quote");
     } else if (node.name === "HorizontalRule") {
-      ranges.push(Decoration.replace({ widget: new RuleWidget(), block: true }).range(node.from, node.to));
+      ranges.push(Decoration.replace({ widget: new RuleWidget() }).range(node.from, node.to));
     } else if (node.name === "FencedCode" || node.name === "CodeBlock") {
       let line = view.state.doc.lineAt(node.from);
       const last = view.state.doc.lineAt(node.to).number;
       while (line.number <= last) {
-        if (!activeLines.has(line.number)) addLine(line.from, "cm-live-codeblock");
+        addLine(line.from, "cm-live-codeblock");
         if (line.number === last) break;
         line = view.state.doc.line(line.number + 1);
       }

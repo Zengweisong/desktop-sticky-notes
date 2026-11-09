@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { Category, CategoryDeleteStrategy } from "../types/category";
+import { SelectField } from "./SelectField";
 
 const COLORS = ["#4F87C8", "#8B6BC2", "#50A477", "#D8894B", "#D45F68", "#3F9D9A", "#8B95A5", "#D59D2A"];
 
@@ -89,9 +90,9 @@ export function CategoryManager(props: Props) {
             const target = props.categories.find((category) => category.id !== deleteTarget.id);
             if (target) setStrategy({ type: "move", targetCategoryId: target.id });
           }} />移动到其他类别</label>
-          {strategy.type === "move" && <select value={strategy.targetCategoryId} onChange={(event) => setStrategy({ type: "move", targetCategoryId: Number(event.target.value) })}>
-            {props.categories.filter((category) => category.id !== deleteTarget.id).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-          </select>}
+          {strategy.type === "move" && <SelectField label="移动到类别" value={strategy.targetCategoryId}
+            options={props.categories.filter((category) => category.id !== deleteTarget.id).map((category) => ({ value: category.id, label: category.name }))}
+            onChange={(targetCategoryId) => setStrategy({ type: "move", targetCategoryId })} />}
           <label className="danger-text"><input type="radio" checked={strategy.type === "delete-notes"} onChange={() => setStrategy({ type: "delete-notes" })} />同时删除这些待办</label>
         </> : <p>该类别中没有待办，删除后无法恢复。</p>}
         <div className="dialog-actions"><button onClick={() => setDeleteTarget(null)}>取消</button><button className="danger" onClick={() => {

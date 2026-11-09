@@ -1,11 +1,12 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Bell, BookOpen, Calendar, Check, Code2, GripVertical, Pin, PinOff, Repeat2, Sparkles, Trash2 } from "lucide-react";
+import { Bell, Calendar, Check, GripVertical, Pin, PinOff, Repeat2, Trash2 } from "lucide-react";
 import type { Category } from "../types/category";
 import type { Note, NotePriority, NoteUpdate } from "../types/note";
 import type { RepeatSeries } from "../types/repeat";
 import { describeRepeat } from "../services/repeatTaskService";
 import { TaskScheduleFields } from "./TaskScheduleFields";
 import { MarkdownContent } from "./MarkdownContent";
+import { SelectField } from "./SelectField";
 
 const MarkdownEditor = lazy(() => import("./MarkdownEditor").then((module) => ({ default: module.MarkdownEditor })));
 
@@ -38,7 +39,6 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
   const [editing, setEditing] = useState(startEditing);
   const [title, setTitle] = useState(note.title);
   const [details, setDetails] = useState(note.details || "");
-  const [detailsMode, setDetailsMode] = useState<"live" | "source" | "preview">("live");
   const [categoryId, setCategoryId] = useState(note.categoryId);
   const [priority, setPriority] = useState<NotePriority>(note.priority);
   const [schedule, setSchedule] = useState<NoteUpdate>(() => scheduleFrom(note, repeatSeries, virtualOccurrence));
@@ -82,7 +82,6 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
     setTitle(note.title); setDetails(note.details || ""); setCategoryId(note.categoryId);
     setPriority(note.priority);
     setSchedule(scheduleFrom(note, repeatSeries, virtualOccurrence));
-    setDetailsMode("live");
   };
   const startEdit = () => { resetDraft(); setEditing(true); };
   const save = async () => {
@@ -99,13 +98,6 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229 && !composing.current) {
       event.preventDefault(); void save();
     }
-  };
-  const handleDetailsKey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter") {
-      event.stopPropagation();
-      return;
-    }
-    handleEditorKey(event);
   };
   const toggle = async (action: () => Promise<boolean>) => { if (busy) return; setBusy(true); await action(); setBusy(false); };
   const category = categories.find((item) => item.id === note.categoryId);
@@ -131,48 +123,34 @@ export function NoteCard({ note, repeatSeries, categories, isNew, dragging, drag
     </button>
     <div className="note-main">
       {editing ? <div className="note-edit-form" ref={editorRef}>
-        <textarea ref={titleRef} value={title} rows={1} disabled={busy} placeholder="待办标题"
+        <textarea ref={titleRef} value={title} rows={1} disabled={busy} placeholder="待办标题" aria-label="事项标题"
           onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
           onChange={(event) => setTitle(event.target.value)} onKeyDown={handleEditorKey} />
         <div className="markdown-editor">
           <div className="markdown-editor-toolbar">
-            <span>详细备注 <small>Markdown</small></span>
-            <div role="group" aria-label="备注编辑模式">
-              <button type="button" className={detailsMode === "live" ? "selected" : ""} title="实时预览"
-                aria-label="实时预览" aria-pressed={detailsMode === "live"} onClick={() => setDetailsMode("live")}><Sparkles size={12} /><span>实时</span></button>
-              <button type="button" className={detailsMode === "source" ? "selected" : ""} title="Markdown 源码"
-                aria-label="Markdown 源码" aria-pressed={detailsMode === "source"} onClick={() => setDetailsMode("source")}><Code2 size={12} /><span>源码</span></button>
-              <button type="button" className={detailsMode === "preview" ? "selected" : ""}
-                title="阅读预览" aria-label="阅读预览" aria-pressed={detailsMode === "preview"} onClick={() => setDetailsMode("preview")}><BookOpen size={12} /><span>阅读</span></button>
-            </div>
+            <span>详细备注</span><small>Markdown · 实时预览</small>
           </div>
-          {detailsMode === "live" ? <Suspense fallback={<textarea value={details} rows={4} disabled={busy}
-            aria-label="备注内容" onChange={(event) => setDetails(event.target.value)} onKeyDown={handleDetailsKey} />}>
+          <Suspense fallback={<div className="markdown-editor-loading" role="status">正在加载编辑器…</div>}>
             <MarkdownEditor value={details} disabled={busy} onChange={setDetails} onCancel={cancel}
               onCompositionChange={(value) => { composing.current = value; }} />
           </Suspense>
-          : detailsMode === "source" ? <textarea value={details} rows={4} disabled={busy} aria-label="详细备注源码"
-            placeholder="支持 Markdown，例如 **重点**、- 列表、[链接](https://...)"
-            onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }}
-            onChange={(event) => setDetails(event.target.value)} onKeyDown={handleDetailsKey} />
-          : <div className="markdown-preview" aria-label="详细备注预览">
-            {details.trim() ? <MarkdownContent content={details} /> : <span>暂无内容</span>}
-          </div>}
         </div>
         <div className="edit-section-title">分类与优先级</div>
         <div className="note-edit-fields">
-          <select value={categoryId ?? ""} onChange={(event) => setCategoryId(Number(event.target.value))} aria-label="所属类别">
-            {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select>
-          <select value={priority} onChange={(event) => setPriority(event.target.value as NotePriority)} aria-label="优先级">
-            <option value="low">低优先级</option><option value="normal">普通</option><option value="high">高优先级</option>
-          </select>
+          <div className="note-edit-field"><span>所属分类</span>
+            <SelectField label="所属类别" value={categoryId ?? categories.find((category) => category.isSystem)?.id ?? null}
+              options={categories.map((item) => ({ value: item.id, label: item.name }))} onChange={setCategoryId} />
+          </div>
+          <div className="note-edit-field"><span>优先级</span>
+            <SelectField label="优先级" value={priority} onChange={setPriority}
+              options={[{ value: "low", label: "低优先级" }, { value: "normal", label: "普通" }, { value: "high", label: "高优先级" }]} />
+          </div>
         </div>
-        {repeatSeries && !virtualOccurrence && <label className="repeat-edit-scope"><span>编辑范围</span><select
-          value={schedule.repeatEditScope || "occurrence"}
-          onChange={(event) => setSchedule((current) => ({ ...current, repeatEditScope: event.target.value as "occurrence" | "series" }))}>
-          <option value="occurrence">仅修改本次</option><option value="series">修改整个系列</option>
-        </select></label>}
+        {repeatSeries && !virtualOccurrence && <div className="repeat-edit-scope"><span>编辑范围</span>
+          <SelectField label="编辑范围" value={schedule.repeatEditScope || "occurrence"}
+            options={[{ value: "occurrence", label: "仅修改本次" }, { value: "series", label: "修改整个系列" }]}
+            onChange={(repeatEditScope) => setSchedule((current) => ({ ...current, repeatEditScope }))} />
+        </div>}
         {repeatSeries && virtualOccurrence && <div className="virtual-occurrence-note">这是尚未生成的重复实例，修改将应用到整个系列。</div>}
         <TaskScheduleFields value={{ ...schedule, title }} onChange={(patch) => setSchedule((current) => ({ ...current, ...patch }))} compact />
         <div className="note-edit-actions"><span>Enter 保存 · Esc 取消</span><button onClick={cancel}>取消</button><button onClick={() => void save()}>保存</button></div>

@@ -1,7 +1,8 @@
 import type { NoteTimeFilter } from "./filter";
 
 export type ThemeName = "warm" | "light" | "dark";
-export type FontSizePreference = "small" | "medium" | "large";
+export const MIN_FONT_SIZE = 14;
+export const MAX_FONT_SIZE = 18;
 export type ViewMode = "list" | "board" | "calendar";
 export type PriorityFilter = "all" | "low" | "normal" | "high";
 
@@ -27,7 +28,7 @@ export interface AppSettings {
   minimalMode: boolean;
   quickAddDefaultsToToday: boolean;
   shortcut: string;
-  fontSize: FontSizePreference;
+  fontSize: number;
   taskTimeFilter: NoteTimeFilter;
   taskCategoryFilterId: number | null;
   taskSearch: string;
@@ -51,7 +52,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   minimalMode: false,
   quickAddDefaultsToToday: true,
   shortcut: "Ctrl+Alt+Space",
-  fontSize: "medium",
+  fontSize: 16,
   taskTimeFilter: "all",
   taskCategoryFilterId: null,
   taskSearch: "",

@@ -18,6 +18,7 @@ vi.mock("../services/noteService", () => ({
 vi.mock("../services/repeatTaskService", () => ({ listRepeatSeries: vi.fn(async () => []) }));
 
 import { useNotes } from "./useNotes";
+import { useToasts } from "./useToasts";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -30,6 +31,59 @@ describe("useNotes calendar rescheduling", () => {
   });
 
   afterEach(() => { container?.remove(); container = null; });
+
+  it("restores the complete calendar schedule with Ctrl+Z after moving to unscheduled", async () => {
+    const timedNote = { ...note, scheduledTime: "09:30", scheduledAt: "2026-07-27T01:30:00.000Z",
+      reminderEnabled: true, reminderAt: "2026-07-27T01:20:00.000Z", reminderOffsetMinutes: 10,
+      reminderTriggeredAt: "2026-07-27T01:20:01.000Z" };
+    const unscheduled = { ...timedNote, scheduledDate: null, scheduledTime: null, scheduledAt: null,
+      reminderEnabled: false, reminderAt: null };
+    useNoteStore.setState({ notes: [timedNote] });
+    noteService.rescheduleNote.mockResolvedValue(undefined);
+    noteService.listNotes.mockResolvedValueOnce([unscheduled]);
+    const onError = vi.fn();
+    let api!: ReturnType<typeof useNotes>;
+    let toasts!: ReturnType<typeof useToasts>;
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    function Harness() { api = useNotes(onError); toasts = useToasts(); return <input />; }
+    await act(async () => root.render(<Harness />));
+
+    await act(async () => {
+      expect(await api.reschedule(timedNote, null)).toBe(true);
+      toasts.toast("已调整事项日期", "success", { noteId: timedNote.id, run: () => api.restoreSchedule(timedNote) });
+    });
+    expect(useNoteStore.getState().notes[0].scheduledTime).toBeNull();
+    const typingUndo = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
+    await act(async () => container!.querySelector("input")!.dispatchEvent(typingUndo));
+    expect(typingUndo.defaultPrevented).toBe(false);
+    expect(noteService.rescheduleNote).toHaveBeenCalledTimes(1);
+
+    const restored = { ...timedNote, title: "拖动后修改的标题" };
+    await act(async () => useNoteStore.setState({ notes: [{ ...unscheduled, title: restored.title }] }));
+    noteService.listNotes.mockResolvedValueOnce([restored]);
+    const undo = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
+    await act(async () => {
+      window.dispatchEvent(undo);
+      await vi.waitFor(() => expect(useNoteStore.getState().notes[0]).toEqual(restored));
+    });
+    expect(undo.defaultPrevented).toBe(true);
+    expect(noteService.rescheduleNote).toHaveBeenLastCalledWith(timedNote.id, timedNote.scheduledDate,
+      expect.objectContaining({ scheduledTime: "09:30", scheduledAt: timedNote.scheduledAt,
+        reminderEnabled: true, reminderAt: timedNote.reminderAt, reminderTriggeredAt: timedNote.reminderTriggeredAt }));
+    expect(toasts.items).toHaveLength(0);
+    expect(onError).not.toHaveBeenCalled();
+
+    const movedAgain = { ...unscheduled, title: restored.title };
+    noteService.listNotes.mockResolvedValueOnce([movedAgain]);
+    await act(async () => { await api.reschedule(restored, null); });
+    noteService.rescheduleNote.mockRejectedValueOnce(new Error("撤销保存失败"));
+    await act(async () => { expect(await api.restoreSchedule(timedNote)).toBe(false); });
+    expect(useNoteStore.getState().notes[0]).toEqual(movedAgain);
+    expect(onError).toHaveBeenCalledWith("撤销保存失败");
+    await act(async () => root.unmount());
+  });
 
   it("optimistically moves once, then rolls back exactly once when persistence fails", async () => {
     let rejectSave!: (error: Error) => void;

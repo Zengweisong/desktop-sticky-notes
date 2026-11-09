@@ -1,19 +1,16 @@
 import { useCallback, useRef } from "react";
 import { useNoteStore } from "../stores/noteStore";
 import * as service from "../services/noteService";
-import type { Note, NoteInput, NoteUpdate } from "../types/note";
+import type { Note, NoteInput, NoteScheduleSnapshot, NoteUpdate } from "../types/note";
 import { listRepeatSeries } from "../services/repeatTaskService";
 import { scheduledAtFromParts } from "../services/noteDateService";
-
-type ScheduleSnapshot = Pick<Note,
-  "scheduledDate" | "scheduledTime" | "scheduledAt" | "reminderEnabled" | "reminderAt">;
 
 export function useNotes(onError: (message: string) => void) {
   const store = useNoteStore();
   const submitting = useRef(false);
   const rescheduleQueues = useRef(new Map<number, Promise<void>>());
   const rescheduleVersions = useRef(new Map<number, number>());
-  const persistedSchedules = useRef(new Map<number, ScheduleSnapshot>());
+  const persistedSchedules = useRef(new Map<number, NoteScheduleSnapshot>());
   const refreshVersion = useRef(0);
   const refresh = useCallback(async () => {
     const version = refreshVersion.current + 1;
@@ -35,7 +32,7 @@ export function useNotes(onError: (message: string) => void) {
     finally { submitting.current = false; }
   }, [onError, refresh]);
 
-  const reschedule = useCallback(async (note: Note, scheduledDate: string | null) => {
+  const reschedule = useCallback(async (note: Note, scheduledDate: string | null, restore?: NoteScheduleSnapshot) => {
     if (note.repeatSeriesId != null) {
       onError("重复事项需要在详情中选择修改范围");
       return false;
@@ -44,14 +41,15 @@ export function useNotes(onError: (message: string) => void) {
     rescheduleVersions.current.set(note.id, version);
     if (!persistedSchedules.current.has(note.id)) persistedSchedules.current.set(note.id, scheduleSnapshot(note));
     useNoteStore.setState((state) => ({
-      notes: state.notes.map((item) => item.id === note.id ? withScheduledDate(item, scheduledDate) : item)
+      notes: state.notes.map((item) => item.id === note.id ? restore ? { ...item, ...restore } : withScheduledDate(item, scheduledDate) : item)
     }));
 
     const previous = rescheduleQueues.current.get(note.id) || Promise.resolve();
     const operation = previous.catch(() => undefined).then(async () => {
-      await service.rescheduleNote(note.id, scheduledDate);
+      if (restore) await service.rescheduleNote(note.id, scheduledDate, restore);
+      else await service.rescheduleNote(note.id, scheduledDate);
       const persisted = persistedSchedules.current.get(note.id) || scheduleSnapshot(note);
-      persistedSchedules.current.set(note.id, scheduleSnapshot(withScheduledDate(note, scheduledDate, persisted)));
+      persistedSchedules.current.set(note.id, restore ?? scheduleSnapshot(withScheduledDate(note, scheduledDate, persisted)));
     });
     rescheduleQueues.current.set(note.id, operation);
     try {
@@ -85,12 +83,16 @@ export function useNotes(onError: (message: string) => void) {
     toggleRepeatActive: (seriesId: number, value: boolean) => run(() => service.setRepeatActive(seriesId, value)),
     move: (id: number, targetId: number, position: "before" | "after") => run(() => service.moveNote(id, targetId, position)),
     reschedule,
+    restoreSchedule: (note: Note) => reschedule(
+      useNoteStore.getState().notes.find((item) => item.id === note.id) ?? note,
+      note.scheduledDate, scheduleSnapshot(note)
+    ),
     remove: (id: number, scope: "occurrence" | "series" = "occurrence") => run(() => service.deleteNote(id, scope)),
     clearCompleted: () => run(service.clearCompletedNotes)
   };
 }
 
-function withScheduledDate(note: Note, scheduledDate: string | null, source: ScheduleSnapshot = note): Note {
+function withScheduledDate(note: Note, scheduledDate: string | null, source: NoteScheduleSnapshot = note): Note {
   const scheduledTime = scheduledDate ? note.scheduledTime : null;
   return {
     ...note,
@@ -102,12 +104,14 @@ function withScheduledDate(note: Note, scheduledDate: string | null, source: Sch
   };
 }
 
-function scheduleSnapshot(note: ScheduleSnapshot): ScheduleSnapshot {
+function scheduleSnapshot(note: NoteScheduleSnapshot): NoteScheduleSnapshot {
   return {
     scheduledDate: note.scheduledDate,
     scheduledTime: note.scheduledTime,
     scheduledAt: note.scheduledAt,
     reminderEnabled: note.reminderEnabled,
-    reminderAt: note.reminderAt
+    reminderAt: note.reminderAt,
+    reminderOffsetMinutes: note.reminderOffsetMinutes,
+    reminderTriggeredAt: note.reminderTriggeredAt
   };
 }

@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EditorView } from "@codemirror/view";
 import type { Note } from "../types/note";
 import { NoteCard } from "./NoteCard";
 
@@ -90,22 +91,21 @@ describe("NoteCard editor keyboard behavior", () => {
     await act(async () => root.unmount());
   });
 
-  it("passes consecutive details line breaks through when saving", async () => {
+  it("preserves Markdown source and consecutive blank lines when saving live edits", async () => {
     container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
     const onEdit = vi.fn().mockResolvedValue(true);
 
     await act(async () => root.render(<NoteCard {...props(onEdit)} startEditing />));
-    await act(async () => container!.querySelector<HTMLButtonElement>('button[aria-label="Markdown 源码"]')!.click());
-    const details = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="详细备注源码"]')!;
+    const markdown = "# 计划\n\n**第一行**\n\n第二行\n- [x] 已完成";
+    const view = EditorView.findFromDOM(container.querySelector<HTMLElement>(".cm-editor")!)!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(details, "第一行\n\n第二行");
-      details.dispatchEvent(new Event("input", { bubbles: true }));
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: markdown } });
     });
     await act(async () => container!.querySelectorAll<HTMLButtonElement>(".note-edit-actions button")[1].click());
 
-    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ details: "第一行\n\n第二行" }));
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ details: markdown }));
     await act(async () => root.unmount());
   });
 
@@ -170,7 +170,7 @@ describe("NoteCard editor keyboard behavior", () => {
     await act(async () => root.unmount());
   });
 
-  it("switches between live, source, and reading modes", async () => {
+  it("uses a single live Markdown editor without mode switches", async () => {
     container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -179,17 +179,12 @@ describe("NoteCard editor keyboard behavior", () => {
     await act(async () => root.render(<NoteCard {...props(vi.fn().mockResolvedValue(true))} note={markdownNote} startEditing />));
     expect(container.querySelector<HTMLElement>('.cm-content[aria-label="详细备注"]')).not.toBeNull();
 
-    const source = container.querySelector<HTMLButtonElement>('button[aria-label="Markdown 源码"]')!;
-    await act(async () => source.click());
-    expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="详细备注源码"]')?.value).toBe(markdownNote.details);
-
-    const preview = container.querySelector<HTMLButtonElement>('button[aria-label="阅读预览"]')!;
-    await act(async () => preview.click());
-    expect(container.querySelector('[aria-label="详细备注预览"] h2')?.textContent).toBe("二级标题");
-    expect(container.querySelector('[aria-label="详细备注预览"] code')?.textContent).toBe("房间号 302");
-    expect(container.querySelector<HTMLElement>('.cm-content[aria-label="详细备注"]')).toBeNull();
-    await act(async () => container!.querySelector<HTMLButtonElement>('button[aria-label="实时预览"]')!.click());
-    expect(container.querySelector<HTMLElement>('.cm-content[aria-label="详细备注"]')).not.toBeNull();
+    expect(container.querySelectorAll(".markdown-editor-toolbar button")).toHaveLength(0);
+    expect(container.querySelector('[aria-label="备注编辑模式"]')).toBeNull();
+    expect(container.querySelector(".markdown-editor-toolbar")?.textContent).toContain("Markdown · 实时预览");
+    expect(container.querySelector(".cm-live-code")?.textContent).toBe("房间号 302");
+    const view = EditorView.findFromDOM(container.querySelector<HTMLElement>(".cm-editor")!)!;
+    expect(view.state.doc.toString()).toBe(markdownNote.details);
     await act(async () => root.unmount());
   });
 
@@ -203,6 +198,32 @@ describe("NoteCard editor keyboard behavior", () => {
 
     expect(container.querySelector(".cm-live-strong")?.textContent).toBe("重点");
     expect(container.querySelector<HTMLInputElement>('.cm-live-checkbox[type="checkbox"]')?.checked).toBe(true);
+    await act(async () => root.unmount());
+  });
+
+  it("shows the full Markdown source on focus and restores preview on blur", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const source = "# 标题\n\n**重点**\n\n`代码`\n- [x] 已完成\n\n---";
+    await act(async () => root.render(<NoteCard {...props(vi.fn().mockResolvedValue(true))}
+      note={{ ...note, details: source }} startEditing />));
+    const view = EditorView.findFromDOM(container.querySelector<HTMLElement>(".cm-editor")!)!;
+    expect(container.querySelector(".cm-live-strong")).not.toBeNull();
+    await act(async () => {
+      view.focus();
+      await vi.waitFor(() => expect(container!.querySelector(".cm-live-strong, .cm-live-code, .cm-live-checkbox")).toBeNull());
+    });
+    expect(view.contentDOM.textContent).toContain("**重点**");
+    expect(view.contentDOM.textContent).toContain("- [x] 已完成");
+    await act(async () => {
+      container!.querySelector<HTMLTextAreaElement>("textarea")!.focus();
+      await vi.waitFor(() => expect(container!.querySelector(".cm-live-heading-1")).not.toBeNull());
+    });
+    expect(container.querySelector(".cm-live-heading-1")?.textContent).toBe("标题");
+    expect(container.querySelector(".cm-live-strong")?.textContent).toBe("重点");
+    expect(container.querySelector(".cm-live-rule")).not.toBeNull();
+    expect(view.state.doc.toString()).toBe(source);
     await act(async () => root.unmount());
   });
 

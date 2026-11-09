@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Download, Keyboard, Moon, Sun, Trash2, Type, Upload, X } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import type { AppSettings, FontSizePreference, ThemeName } from "../types/settings";
+import { MAX_FONT_SIZE, MIN_FONT_SIZE, type AppSettings, type ThemeName } from "../types/settings";
 import { exportNotes, importNotes } from "../services/noteService";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { OpacitySlider } from "./OpacitySlider";
@@ -12,6 +12,7 @@ interface Props {
   onUpdate: (patch: Partial<AppSettings>) => Promise<void>; onClearCompleted: () => Promise<boolean>;
   onLaunchOnStartupChange: (enabled: boolean) => Promise<boolean>;
   onShortcutChange: (shortcut: string) => Promise<boolean>;
+  onShortcutRecordingChange?: (recording: boolean) => void;
   onImported: () => Promise<void>; toast: (message: string, type?: "success" | "error") => void;
 }
 const themes: Array<{ value: ThemeName; label: string; icon: typeof Sun }> = [
@@ -19,18 +20,29 @@ const themes: Array<{ value: ThemeName; label: string; icon: typeof Sun }> = [
   { value: "light", label: "浅色玻璃", icon: Sun },
   { value: "dark", label: "深色玻璃", icon: Moon }
 ];
-const fontSizes: Array<{ value: FontSizePreference; label: string }> = [
-  { value: "small", label: "小" },
-  { value: "medium", label: "中" },
-  { value: "large", label: "大" }
-];
 
 export function SettingsDrawer(props: Props) {
+  const { fontSize } = props.settings;
+  const fontSizeProgress = (fontSize - MIN_FONT_SIZE) / (MAX_FONT_SIZE - MIN_FONT_SIZE) * 100;
   const [confirmClear, setConfirmClear] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const [recordingShortcut, setRecordingShortcut] = useState(false);
   const [shortcutBusy, setShortcutBusy] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const ctrlTaps = useRef<{ downAt: number | null; upAt: number | null }>({ downAt: null, upAt: null });
+
+  const saveShortcut = (shortcut: string) => {
+    setShortcutBusy(true);
+    void props.onShortcutChange(shortcut).then((ok) => { if (ok) setRecordingShortcut(false); }).finally(() => setShortcutBusy(false));
+  };
+
+  useEffect(() => {
+    props.onShortcutRecordingChange?.(props.open && recordingShortcut);
+  }, [props.open, props.onShortcutRecordingChange, recordingShortcut]);
+
+  useEffect(() => {
+    if (!props.open) setRecordingShortcut(false);
+  }, [props.open]);
 
   useEffect(() => {
     if (!props.open) return;
@@ -74,13 +86,15 @@ export function SettingsDrawer(props: Props) {
       <div className="drawer-content">
         <OpacitySlider value={props.settings.opacity} onChange={(opacity) => void props.onUpdate({ opacity })} />
         <div className="setting-block">
-          <div className="setting-heading"><span className="setting-heading-label"><Type size={16} />字体大小</span></div>
-          <div className="font-size-options" role="radiogroup" aria-label="字体大小">
-            {fontSizes.map(({ value, label }) => <button key={value} type="button" role="radio"
-              aria-checked={props.settings.fontSize === value}
-              className={props.settings.fontSize === value ? "selected" : ""}
-              onClick={() => void props.onUpdate({ fontSize: value })}>{label}</button>)}
+          <div className="setting-heading">
+            <label className="setting-heading-label" htmlFor="font-size"><Type size={16} />字体大小</label>
+            <output htmlFor="font-size">{fontSize} px</output>
           </div>
+          <input id="font-size" className="font-size-slider" type="range" min={MIN_FONT_SIZE} max={MAX_FONT_SIZE} step={1}
+            value={fontSize} aria-valuetext={`${fontSize} 像素`}
+            style={{ "--font-size-progress": `${fontSizeProgress}%` } as CSSProperties}
+            onChange={(event) => void props.onUpdate({ fontSize: event.currentTarget.valueAsNumber })} />
+          <div className="range-labels" aria-hidden="true"><span>小</span><span>大</span></div>
         </div>
         <div className="setting-block"><div className="setting-heading"><span>主题</span></div>
           <div className="theme-options">{themes.map(({ value, label, icon: Icon }) => <button key={value}
@@ -102,7 +116,7 @@ export function SettingsDrawer(props: Props) {
               onChange={(showTodayOnStartup) => void props.onUpdate(showTodayOnStartup
                 ? { showTodayOnStartup, taskTimeFilter: "today" }
                 : { showTodayOnStartup })} />
-            <Toggle label="显示已完成事项" description="开启后，在列表底部显示已经完成的事项。"
+            <Toggle label="显示已完成事项" description="开启后，在列表底部显示已完成事项，并在看板中显示“已完成”栏目。"
               checked={props.settings.showCompleted} onChange={(showCompleted) => void props.onUpdate({ showCompleted })} />
           </div>
         </div>
@@ -114,17 +128,41 @@ export function SettingsDrawer(props: Props) {
           </div>
         </div>
         <button className={`shortcut-card ${recordingShortcut ? "recording" : ""}`} type="button"
-          disabled={shortcutBusy} onClick={() => setRecordingShortcut(true)}
+          disabled={shortcutBusy} onClick={() => {
+            ctrlTaps.current = { downAt: null, upAt: null };
+            setRecordingShortcut(true);
+          }}
           onBlur={() => setRecordingShortcut(false)} onKeyDown={(event) => {
-            if (!recordingShortcut) return;
+            if (!recordingShortcut || shortcutBusy) return;
             event.preventDefault(); event.stopPropagation();
             if (event.key === "Escape") { setRecordingShortcut(false); return; }
+            if (event.repeat) return;
+            if (event.key === "Control" && event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+              if (ctrlTaps.current.downAt !== null) ctrlTaps.current.upAt = null;
+              ctrlTaps.current.downAt = performance.now();
+              return;
+            }
+            ctrlTaps.current = { downAt: null, upAt: null };
             const shortcut = shortcutFromKeyboardEvent(event);
             if (!shortcut) return;
-            setShortcutBusy(true);
-            void props.onShortcutChange(shortcut).then((ok) => { if (ok) setRecordingShortcut(false); }).finally(() => setShortcutBusy(false));
+            saveShortcut(shortcut);
+          }} onKeyUp={(event) => {
+            if (!recordingShortcut || shortcutBusy) return;
+            event.preventDefault(); event.stopPropagation();
+            const now = performance.now();
+            const taps = ctrlTaps.current;
+            if (event.key !== "Control" || event.ctrlKey || event.altKey || event.shiftKey || event.metaKey
+              || taps.downAt === null || now - taps.downAt > 300) {
+              ctrlTaps.current = { downAt: null, upAt: null };
+              return;
+            }
+            taps.downAt = null;
+            if (taps.upAt !== null && now - taps.upAt <= 400) {
+              ctrlTaps.current = { downAt: null, upAt: null };
+              saveShortcut("Ctrl+Ctrl");
+            } else taps.upAt = now;
           }}>
-          <Keyboard size={18} /><div><strong>快速呼出</strong><span>{recordingShortcut ? "请按新的组合键，Esc 取消" : "点击后录入自定义快捷键"}</span></div>
+          <Keyboard size={18} /><div><strong>快速呼出</strong><span>{recordingShortcut ? "请按组合键或双击 Ctrl，Esc 取消" : "选中文字优先，否则添加 3 秒内复制的文字；支持双击 Ctrl"}</span></div>
           <span className="shortcut-keys">{(recordingShortcut ? ["等待按键…"] : props.settings.shortcut.split("+")).map((key, index) =>
             <span className="shortcut-key-part" key={`${key}-${index}`}><kbd>{key}</kbd>{index < (recordingShortcut ? 0 : props.settings.shortcut.split("+").length - 1) && <b>+</b>}</span>)}</span>
         </button>

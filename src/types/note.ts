@@ -1,4 +1,7 @@
 export type NotePriority = "low" | "normal" | "high";
+export type NoteScheduleSnapshot = Pick<Note,
+  "scheduledDate" | "scheduledTime" | "scheduledAt" | "reminderEnabled" | "reminderAt"
+  | "reminderOffsetMinutes" | "reminderTriggeredAt">;
 import type { BoardStatus } from "./board";
 
 export interface Note {

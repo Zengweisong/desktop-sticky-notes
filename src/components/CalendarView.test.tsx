@@ -76,6 +76,45 @@ describe("CalendarView", () => {
     expect(container.querySelector('[data-date="2026-08-05"]')?.classList.contains("selected")).toBe(true);
   });
 
+  it("only adds a time after confirmation and clears it back to an optional value", async () => {
+    const onAdd = vi.fn(async (_input: NoteInput) => true);
+    ({ container, root } = await renderCalendar(onAdd));
+    const trigger = container.querySelector<HTMLButtonElement>(".calendar-time-trigger")!;
+    const title = container.querySelector<HTMLInputElement>('[aria-label="新事项标题"]')!;
+    const form = container.querySelector<HTMLFormElement>(".calendar-quick-add")!;
+    const selectTime = async () => {
+      await act(async () => trigger.click());
+      const picker = document.querySelector<HTMLElement>(".calendar-time-popover")!;
+      await act(async () => {
+        picker.querySelector<HTMLButtonElement>('[aria-label="09 小时"]')!.click();
+        picker.querySelector<HTMLButtonElement>('[aria-label="35 分钟"]')!.click();
+      });
+      return picker;
+    };
+
+    expect(trigger.textContent).toBe("时间");
+    const dismissed = await selectTime();
+    await act(async () => dismissed.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(trigger.textContent).toBe("时间");
+    const picker = await selectTime();
+    await act(async () => picker.querySelector<HTMLButtonElement>(".time-popover-confirm")!.click());
+    expect(trigger.textContent).toBe("09:35");
+    await act(async () => {
+      setInputValue(title, "定时事项");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(onAdd).toHaveBeenNthCalledWith(1, expect.objectContaining({ scheduledTime: "09:35" }));
+
+    await act(async () => trigger.click());
+    await act(async () => document.querySelector<HTMLButtonElement>(".calendar-time-popover .calendar-picker-footer button")!.click());
+    expect(trigger.textContent).toBe("时间");
+    await act(async () => {
+      setInputValue(title, "全天事项");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(onAdd).toHaveBeenNthCalledWith(2, expect.objectContaining({ scheduledTime: null }));
+  });
+
   it("drags a timed task to an adjacent-month cell without also opening details", async () => {
     const onReschedule = vi.fn(async () => true);
     ({ container, root } = await renderCalendar(undefined, onReschedule));
@@ -201,7 +240,7 @@ async function renderCalendar(
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => root.render(<CalendarView notes={notes} categories={categories} repeatSeries={[]}
-    loading={false} minimal={minimal} defaultCategoryId={1} timeFilter="all" categoryId={null} search="" priority="all"
+    loading={false} minimal={minimal} defaultCategoryId={1} categoryId={null} search="" priority="all"
     onAdd={onAdd} onEdit={async () => true} onToggleCompleted={async () => true}
     onTogglePinned={async () => true} onToggleRepeatActive={async () => true} onDelete={async () => true}
     onReschedule={onReschedule}

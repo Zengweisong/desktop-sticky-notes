@@ -63,6 +63,38 @@ describe("CategoryNav", () => {
     await act(async () => root.unmount());
   });
 
+  it("hides saved date filters in the calendar and restores them in the list", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onTimeFilterChange = vi.fn();
+    const renderNav = (viewMode: "list" | "calendar", categoryId: number | null = null) =>
+      <CategoryNav categories={categories} timeFilter="today" categoryId={categoryId}
+        viewMode={viewMode} onTimeFilterChange={onTimeFilterChange}
+        onCategoryChange={vi.fn()} onManage={vi.fn()} />;
+
+    await act(async () => root.render(renderNav("calendar")));
+    expect(container.querySelector(".active-filter-summary")).toBeNull();
+    expect(container.querySelector(".filter-active-dot")).toBeNull();
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="筛选事项"]')!.click());
+    expect(container.querySelector('[aria-label="时间范围"]')).toBeNull();
+    expect(container.textContent).not.toContain("时间范围");
+    expect(container.querySelector(".filter-search")).not.toBeNull();
+    expect(container.querySelector(".priority-filter")).not.toBeNull();
+    expect(container.querySelector('[aria-label="所属分类"]')).not.toBeNull();
+
+    await act(async () => root.render(renderNav("calendar", 2)));
+    expect(container.querySelector(".active-filter-summary")?.textContent).toBe("工作");
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="清除全部筛选"]')!.click());
+    expect(onTimeFilterChange).not.toHaveBeenCalled();
+
+    await act(async () => root.render(renderNav("list")));
+    expect(container.querySelector(".active-filter-summary")?.textContent).toContain("今天");
+    expect(container.querySelector('[aria-label="时间范围"]')).not.toBeNull();
+    expect(button("今天")?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => root.unmount());
+  });
+
   it("uses distinct semantic controls for filtering and the three views", async () => {
     container = document.createElement("div");
     document.body.append(container);

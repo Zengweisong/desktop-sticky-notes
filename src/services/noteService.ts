@@ -1,6 +1,6 @@
 import { getDatabase } from "./database";
 import type { ExportPayloadV2, ExportPayloadV3, Category, CategoryRow } from "../types/category";
-import type { ExportPayloadV1, Note, NoteInput, NotePriority, NoteRow, NoteUpdate } from "../types/note";
+import type { ExportPayloadV1, Note, NoteInput, NotePriority, NoteRow, NoteScheduleSnapshot, NoteUpdate } from "../types/note";
 import { listCategories } from "./categoryService";
 import { ReminderService } from "./reminderService";
 import { createRepeatSeries, deleteRepeatSeries, getRepeatSeries, listRepeatSeries, repeatReminderAt, restoreRepeatSeries, setRepeatSeriesActive, stopRepeatSeries, updateRepeatSeries, withRepeatSeriesMutation } from "./repeatTaskService";
@@ -225,12 +225,25 @@ export async function setNotePinned(id: number, pinned: boolean): Promise<void> 
   } catch (error) { console.error("更新置顶状态失败:", error); throw new Error("更新置顶失败"); }
 }
 
-export async function rescheduleNote(id: number, scheduledDate: string | null): Promise<void> {
+export async function rescheduleNote(id: number, scheduledDate: string | null, restore?: NoteScheduleSnapshot): Promise<void> {
   const db = await getDatabase();
   const rows = await db.select<NoteRow[]>(`SELECT ${SELECT_FIELDS} FROM notes WHERE id = $1`, [id]);
   if (!rows.length) throw new Error("事项不存在");
   const current = fromRow(rows[0]);
   if (current.repeatSeriesId != null) throw new Error("重复事项需要在详情中选择修改范围");
+
+  if (restore) {
+    await db.execute(
+      `UPDATE notes SET scheduled_at=$1, scheduled_date=$2, scheduled_time=$3,
+       reminder_enabled=$4, reminder_at=$5, reminder_offset_minutes=$6, reminder_triggered_at=$7,
+       updated_at=$8 WHERE id=$9`,
+      [restore.scheduledAt, restore.scheduledDate, restore.scheduledTime,
+        restore.reminderEnabled ? 1 : 0, restore.reminderAt, restore.reminderOffsetMinutes,
+        restore.reminderTriggeredAt, new Date().toISOString(), id]
+    );
+    await ReminderService.cancelReminder(id);
+    return;
+  }
 
   const schedule = normalizedSchedule({
     scheduledDate,
