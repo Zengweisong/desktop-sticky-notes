@@ -1,15 +1,15 @@
 import { getDatabase } from "./database";
 import {
   DEFAULT_SETTINGS,
+  MAX_FONT_SIZE,
+  MIN_FONT_SIZE,
   type AppSettings,
-  type FontSizePreference,
   type PriorityFilter,
   type ThemeName
 } from "../types/settings";
 import { isNoteTimeFilter } from "../types/filter";
 
 const THEMES = new Set<ThemeName>(["warm", "light", "dark"]);
-const FONT_SIZES = new Set<FontSizePreference>(["small", "medium", "large"]);
 const PRIORITIES = new Set<PriorityFilter>(["all", "low", "normal", "high"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,9 +75,9 @@ export function normalizeSettings(value: unknown): AppSettings {
     ? saved.theme as ThemeName
     : DEFAULT_SETTINGS.theme;
   const fontSizeCandidate = saved.fontSize ?? savedAppearance.fontSize;
-  const fontSize = FONT_SIZES.has(fontSizeCandidate as FontSizePreference)
-    ? fontSizeCandidate as FontSizePreference
-    : DEFAULT_SETTINGS.fontSize;
+  const fontSize = fontSizeCandidate === "small" ? MIN_FONT_SIZE
+    : fontSizeCandidate === "large" ? MAX_FONT_SIZE
+    : Math.round(Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, finiteNumber(fontSizeCandidate, DEFAULT_SETTINGS.fontSize))));
 
   return {
     opacity: Math.round(Math.min(100, Math.max(0, opacity))),

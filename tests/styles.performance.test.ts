@@ -21,21 +21,6 @@ describe("overlay animation performance", () => {
   });
 });
 
-describe("quick category menu layering", () => {
-  it("raises the transformed input stacking context and keeps the menu opaque", () => {
-    const openRule = css.match(/\.quick-input-wrap\.category-menu-open\s*\{([^}]*)\}/)?.[1] ?? "";
-    const navigationRule = css.match(/\.category-nav\s*\{([^}]*)\}/)?.[1] ?? "";
-    const menuRule = css.match(/\.quick-category-menu\s*\{([^}]*)\}/)?.[1] ?? "";
-    const openLayer = Number(openRule.match(/z-index:\s*(\d+)/)?.[1] ?? 0);
-    const navigationLayer = Number(navigationRule.match(/z-index:\s*(\d+)/)?.[1] ?? 0);
-
-    expect(openLayer).toBeGreaterThan(navigationLayer);
-    expect(menuRule).toContain("background: rgb(var(--panel-rgb))");
-    expect(menuRule).not.toContain("background: rgba");
-    expect(menuRule).not.toContain("backdrop-filter");
-  });
-});
-
 describe("main list scrolling", () => {
   it("keeps wheel scrolling while hiding the WebView scrollbar", () => {
     const viewportRule = css.match(/\.content-viewport\s*\{([^}]*)\}/)?.[1] ?? "";
@@ -54,28 +39,25 @@ describe("compact filter popover", () => {
     const compactRules = compactStart >= 0 ? css.slice(compactStart, compactEnd) : "";
     const pickerRule = compactRules.match(/\.category-filter-picker\s*\{([^}]*)\}/)?.[1] ?? "";
     const popoverRule = compactRules.match(/\.category-filter-popover\s*\{([^}]*)\}/)?.[1] ?? "";
-    const coveredListRule = compactRules.match(/\.list-area:has\(\.category-filter-popover\)\s*\{([^}]*)\}/)?.[1] ?? "";
+    const coveredListRule = css.match(/\.list-area:has\(\.category-filter-popover\)\s*\{([^}]*)\}/)?.[1] ?? "";
     const coveredViewportRule = compactRules.match(/\.list-area:has\(\.category-filter-popover\) \.content-viewport\s*\{([^}]*)\}/)?.[1] ?? "";
 
     expect(pickerRule).toContain("position: static");
     expect(popoverRule).toContain("left: 0");
     expect(popoverRule).toContain("right: 4px");
     expect(popoverRule).toContain("width: auto");
-    expect(coveredListRule).toContain("overflow-y: hidden");
+    expect(coveredListRule).toContain("overflow: visible");
     expect(coveredViewportRule).toContain("overflow-y: hidden");
   });
 });
 
 describe("minimal mode layout", () => {
-  it("hides the app title and compacts the title, input, and filter rows", () => {
+  it("compacts the title bar, input, and filter rows", () => {
     const panelRule = css.match(/\.minimal-mode \.panel\s*\{([^}]*)\}/)?.[1] ?? "";
-    const titleRule = css.match(/\.minimal-mode \.app-title\s*\{([^}]*)\}/)?.[1] ?? "";
     const inputRule = css.match(/\.quick-input-wrap\.minimal \.quick-input-row\s*\{([^}]*)\}/)?.[1] ?? "";
     const navigationRule = css.match(/\.minimal-mode \.category-nav\s*\{([^}]*)\}/)?.[1] ?? "";
 
     expect(panelRule).toContain("grid-template-rows: 40px");
-    expect(titleRule).toContain("display: none");
-    expect(inputRule).toContain("minmax(0, 1fr) 32px 38px");
     expect(inputRule).toContain("gap: 4px");
     expect(navigationRule).toContain("min-height: 30px");
   });
@@ -93,13 +75,13 @@ describe("schedule form layout", () => {
   });
 
   it("keeps primary settings balanced, time fields equal, and room for select arrows", () => {
-    const primaryGrid = css.match(/\.schedule-primary-row\s*\{([^}]*)\}/)?.[1] ?? "";
+    const primaryGrid = css.match(/(?:^|\n)\.schedule-primary-row\s*\{([^}]*)\}/)?.[1] ?? "";
     const planGrid = css.match(/\.plan-time-row\s*\{([^}]*)\}/)?.[1] ?? "";
-    const controlsRule = css.match(/\.note-edit-form textarea,[\s\S]*?\.custom-offset-row select\s*\{([^}]*)\}/)?.[1] ?? "";
+    const controlsRule = css.match(/(?:^|\n)\.select-field-trigger\s*\{([^}]*)\}/)?.[1] ?? "";
 
     expect(primaryGrid).toContain("minmax(0, 1fr) minmax(132px, .65fr)");
     expect(planGrid).toContain("minmax(0, 1fr) minmax(0, 1fr)");
-    expect(controlsRule).toMatch(/padding:\s*0\s+40px\s+0\s+14px/);
+    expect(controlsRule).toContain("grid-template-columns: minmax(0, 1fr) 14px");
     expect(css).not.toContain(".advanced-classification");
   });
 

@@ -16,12 +16,43 @@ describe("BoardView column menus", () => {
     container = null;
   });
 
+  it("hides the completed column by default and allows viewing and restoring its items when enabled", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const completedNote: Note = { ...repeatNote, id: 2, title: "已完成事项", completed: true,
+      boardColumnId: "completed", status: "completed", repeatSeriesId: null };
+    const onToggleCompleted = vi.fn(async () => true);
+    const props = {
+      columns, notes: [repeatNote, completedNote], categories: [], repeatSeries: [], loading: false,
+      selectedColumnId: null, onSelectedColumnChange: vi.fn(), onAdd: async () => true,
+      onEdit: async () => true, onToggleCompleted, onTogglePinned: async () => true,
+      onToggleRepeatActive: async () => true, onDelete: async () => true, onMoveNote: async () => true,
+      onCreateColumn: async () => true, onRenameColumn: async () => true,
+      onDeleteColumn: async () => true, onMoveColumn: async () => true
+    };
+
+    await act(async () => root.render(<BoardView {...props} />));
+    expect(container.querySelector('[data-column-id="completed"]')).toBeNull();
+    expect(container.querySelector('[data-note-id="2"]')).toBeNull();
+    expect(container.querySelector('[data-note-id="1"]')).not.toBeNull();
+
+    await act(async () => root.render(<BoardView {...props} showCompleted />));
+    expect(container.querySelector('[data-column-id="completed"]')).not.toBeNull();
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="恢复事项"]')!.click());
+    expect(onToggleCompleted).toHaveBeenCalledWith(completedNote);
+
+    await act(async () => root.render(<BoardView {...props} showCompleted={false} />));
+    expect(container.querySelector('[data-column-id="completed"]')).toBeNull();
+    await act(async () => root.unmount());
+  });
+
   it("only renders a menu trigger when the column has available actions", async () => {
     container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
 
-    await act(async () => root.render(<BoardView columns={columns} notes={[]} categories={[]} repeatSeries={[]}
+    await act(async () => root.render(<BoardView columns={columns} notes={[]} categories={[]} repeatSeries={[]} showCompleted
       loading={false} selectedColumnId={null} onSelectedColumnChange={vi.fn()} onAdd={async () => true}
       onEdit={async () => true} onToggleCompleted={async () => true} onTogglePinned={async () => true}
       onToggleRepeatActive={async () => true} onDelete={async () => true} onMoveNote={async () => true}

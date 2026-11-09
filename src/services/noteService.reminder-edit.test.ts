@@ -252,6 +252,23 @@ describe("creating with the unified item time", () => {
 });
 
 describe("rescheduling from the calendar", () => {
+  it("restores date, time and reminder fields without overwriting other note content", async () => {
+    vi.clearAllMocks();
+    db.select.mockResolvedValueOnce([existingNoteRow()]);
+    db.execute.mockResolvedValue({ rowsAffected: 1, lastInsertId: 0 });
+    const snapshot = {
+      scheduledDate: "2026-07-27", scheduledTime: "09:30", scheduledAt: "2026-07-27T01:30:00.000Z",
+      reminderEnabled: true, reminderAt: "2026-07-27T01:20:00.000Z", reminderOffsetMinutes: 10,
+      reminderTriggeredAt: "2026-07-27T01:20:01.000Z"
+    };
+    await rescheduleNote(7, snapshot.scheduledDate, snapshot);
+    const [sql, values] = db.execute.mock.calls[0];
+    expect(values?.slice(0, 7)).toEqual([snapshot.scheduledAt, snapshot.scheduledDate, snapshot.scheduledTime,
+      1, snapshot.reminderAt, 10, snapshot.reminderTriggeredAt]);
+    expect(sql).not.toMatch(/title\s*=|details\s*=|category_id\s*=/);
+    expect(ReminderService.cancelReminder).toHaveBeenCalledWith(7);
+  });
+
   it("changes only the date and preserves an explicit time", async () => {
     vi.clearAllMocks();
     db.select.mockResolvedValueOnce([{

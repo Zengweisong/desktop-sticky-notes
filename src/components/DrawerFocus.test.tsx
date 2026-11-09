@@ -50,7 +50,7 @@ describe("drawer focus", () => {
     const row = [...container!.querySelectorAll(".toggle-row")]
       .find((item) => item.textContent?.includes("显示已完成事项"))!;
     const completedToggle = row.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
-    expect(row.textContent).toContain("开启后，在列表底部显示已经完成的事项。");
+    expect(row.textContent).toContain("开启后，在列表底部显示已完成事项，并在看板中显示“已完成”栏目。");
     expect(completedToggle.checked).toBe(false);
     await act(async () => completedToggle.click());
     expect(onUpdate).toHaveBeenCalledWith({ showCompleted: true });

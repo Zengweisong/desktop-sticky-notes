@@ -12,6 +12,13 @@ describe("TaskScheduleFields product rules", () => {
 
   afterEach(() => { container?.remove(); container = null; });
 
+  const select = (label: string) => container!.querySelector<HTMLButtonElement>(`[role="combobox"][aria-label="${label}"]`)!;
+  const choose = async (label: string, text: string) => {
+    await act(async () => select(label).click());
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((item) => item.textContent === text)!;
+    await act(async () => option.click());
+  };
+
   it("does not enable reminders before an item time exists", async () => {
     const root = await render();
     const reminder = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
@@ -26,53 +33,73 @@ describe("TaskScheduleFields product rules", () => {
     const reminder = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
     await act(async () => reminder.click());
     expect(reminder.getAttribute("aria-checked")).toBe("true");
-    expect(container!.querySelector<HTMLSelectElement>('select[aria-label="提醒方式"]')!.value).toBe("10");
-    expect(container!.querySelector<HTMLSelectElement>('.schedule-control-row select')!.value).toBe("none");
+    expect(select("提醒方式").textContent).toBe("提前 10 分钟");
+    expect(select("重复方式").textContent).toBe("不重复");
     await act(async () => root.unmount());
   });
 
   it("enables repeat without an item date or time and defaults its own reminder", async () => {
     const root = await render();
-    const repeat = container!.querySelector<HTMLSelectElement>('.schedule-control-row select')!;
-    await act(async () => { repeat.value = "daily"; repeat.dispatchEvent(new Event("change", { bubbles: true })); });
-    expect(repeat.value).toBe("daily");
+    await choose("重复方式", "每天");
+    expect(select("重复方式").textContent).toBe("每天");
     expect(container!.querySelector<HTMLButtonElement>('[role="switch"]')!.getAttribute("aria-checked")).toBe("true");
     expect(container!.querySelector('[aria-labelledby="plan-time-label"]')).toBeNull();
     expect(container!.querySelector('.reminder-options')).toBeNull();
-    expect(container!.querySelector<HTMLInputElement>('input[aria-label="重复提醒时间"]')!.value).toBe("09:00");
+    expect(container!.querySelector('[aria-label="重复提醒时间"]')!.textContent).toBe("09:00");
+    await act(async () => root.unmount());
+  });
+
+  it("previews keyboard choices and applies only a confirmed option", async () => {
+    const root = await render();
+    const repeat = select("重复方式");
+    const press = async (key: string) => act(async () => {
+      repeat.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    });
+    repeat.focus();
+    await press("ArrowDown");
+    await press("ArrowDown");
+    expect(document.getElementById(repeat.getAttribute("aria-activedescendant")!)?.textContent).toBe("每天");
+    expect(repeat.textContent).toBe("不重复");
+    await press("Escape");
+    expect(repeat.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(repeat);
+    await press("ArrowDown");
+    await press("ArrowDown");
+    await press("Enter");
+    expect(repeat.textContent).toBe("每天");
+    expect(select("结束条件").textContent).toBe("永不结束");
     await act(async () => root.unmount());
   });
 
   it("keeps repeat reminder time after its independent switch is turned off", async () => {
     const root = await render({ repeatEnabled: true, repeatReminderEnabled: true, repeatReminderTime: "08:30" }, true);
     expect(container!.querySelector('[aria-labelledby="plan-time-label"]')).toBeNull();
-    expect(container!.querySelector<HTMLInputElement>('input[aria-label="重复提醒时间"]')!.value).toBe("08:30");
+    expect(container!.querySelector('[aria-label="重复提醒时间"]')!.textContent).toBe("08:30");
     const reminder = container!.querySelector<HTMLButtonElement>('[role="switch"]')!;
     await act(async () => reminder.click());
     expect(reminder.getAttribute("aria-checked")).toBe("false");
-    expect(container!.querySelector('input[aria-label="重复提醒时间"]')).toBeNull();
+    expect(container!.querySelector('[aria-label="重复提醒时间"]')).toBeNull();
 
     await act(async () => reminder.click());
-    expect(container!.querySelector<HTMLInputElement>('input[aria-label="重复提醒时间"]')!.value).toBe("08:30");
+    expect(container!.querySelector('[aria-label="重复提醒时间"]')!.textContent).toBe("08:30");
     await act(async () => root.unmount());
   });
 
   it("does not overwrite the ordinary reminder when repeat is toggled on and off", async () => {
     const root = await render({ scheduledAt: futurePlan(), reminderEnabled: true, reminderOffsetMinutes: 10 }, true);
-    const repeat = container!.querySelector<HTMLSelectElement>('.schedule-control-row select')!;
-    await act(async () => { repeat.value = "daily"; repeat.dispatchEvent(new Event("change", { bubbles: true })); });
-    expect(container!.querySelector<HTMLInputElement>('input[aria-label="重复提醒时间"]')!.value).toBe("09:00");
+    await choose("重复方式", "每天");
+    expect(container!.querySelector('[aria-label="重复提醒时间"]')!.textContent).toBe("09:00");
 
-    await act(async () => { repeat.value = "none"; repeat.dispatchEvent(new Event("change", { bubbles: true })); });
+    await choose("重复方式", "不重复");
     expect(container!.querySelector<HTMLButtonElement>('[role="switch"]')!.getAttribute("aria-checked")).toBe("true");
-    expect(container!.querySelector<HTMLSelectElement>('select[aria-label="提醒方式"]')!.value).toBe("10");
+    expect(select("提醒方式").textContent).toBe("提前 10 分钟");
     await act(async () => root.unmount());
   });
 
   it("renders exactly one editable date and time even when reminder is enabled", async () => {
     const root = await render({ scheduledAt: futurePlan(), reminderEnabled: true });
-    expect(container!.querySelectorAll('input[type="date"]')).toHaveLength(1);
-    expect(container!.querySelectorAll('input[type="time"]')).toHaveLength(1);
+    expect(container!.querySelectorAll('.calendar-date-field')).toHaveLength(1);
+    expect(container!.querySelectorAll('.calendar-time-field')).toHaveLength(1);
     expect(container!.querySelector('input[type="datetime-local"]')).toBeNull();
     expect(container!.querySelector('.reminder-block input[type="date"], .reminder-block input[type="time"]')).toBeNull();
     expect(container!.textContent).toContain("将在");
@@ -81,48 +108,31 @@ describe("TaskScheduleFields product rules", () => {
 
   it("clears an ordinary item time without restoring midnight", async () => {
     const root = await render({ scheduledAt: futurePlan(), reminderEnabled: true }, true);
-    const time = container!.querySelector<HTMLInputElement>('input[type="time"]')!;
-    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="清除具体时间"]')!.click());
+    const time = container!.querySelector<HTMLButtonElement>('[aria-label="选择时间"]')!;
+    await act(async () => time.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('.calendar-time-popover .calendar-picker-footer button')!.click());
 
-    expect(time.value).toBe("");
-    expect(container!.querySelector<HTMLInputElement>('input[type="date"]')!.value).not.toBe("");
+    expect(time.textContent).toBe("添加时间");
+    expect(container!.querySelector('[aria-label="选择日期"]')!.textContent).not.toBe("选择日期");
     expect(container!.querySelector<HTMLButtonElement>('[role="switch"]')!.getAttribute("aria-checked")).toBe("false");
     expect(container!.querySelector(".reminder-details-block")).toBeNull();
     await act(async () => root.unmount());
   });
 
-  it("opens the native picker from the full custom date and time controls", async () => {
-    const showPicker = vi.fn();
-    const originalShowPicker = HTMLInputElement.prototype.showPicker;
-    Object.defineProperty(HTMLInputElement.prototype, "showPicker", {
-      configurable: true,
-      value: showPicker
+  it("opens themed date and time popovers from the whole field", async () => {
+    const root = await render();
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="选择日期"]')!.click());
+    expect(document.querySelectorAll(".calendar-date-popover .date-popover-days button")).toHaveLength(42);
+    await act(async () => document.querySelector<HTMLButtonElement>(".date-popover-today")!.click());
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="选择时间"]')!.click());
+    expect(document.querySelectorAll(".time-popover-options button")).toHaveLength(84);
+    await act(async () => {
+      document.querySelector<HTMLButtonElement>('[aria-label="14 小时"]')!.click();
+      document.querySelector<HTMLButtonElement>('[aria-label="35 分钟"]')!.click();
     });
-
-    try {
-      const root = await render();
-      const date = container!.querySelector<HTMLInputElement>('input[type="date"]')!;
-      const time = container!.querySelector<HTMLInputElement>('input[type="time"]')!;
-
-      await act(async () => date.closest<HTMLLabelElement>(".picker-input")!.click());
-      expect(showPicker).toHaveBeenCalledTimes(1);
-      expect(showPicker.mock.instances[0]).toBe(date);
-
-      await act(async () => time.closest<HTMLLabelElement>(".picker-input")!.click());
-      expect(showPicker).toHaveBeenCalledTimes(2);
-      expect(showPicker.mock.instances[1]).toBe(time);
-
-      await act(async () => root.unmount());
-    } finally {
-      if (originalShowPicker) {
-        Object.defineProperty(HTMLInputElement.prototype, "showPicker", {
-          configurable: true,
-          value: originalShowPicker
-        });
-      } else {
-        delete (HTMLInputElement.prototype as Partial<HTMLInputElement>).showPicker;
-      }
-    }
+    await act(async () => document.querySelector<HTMLButtonElement>(".time-popover-confirm")!.click());
+    expect(container!.querySelector('[aria-label="选择时间"]')!.textContent).toBe("14:35");
+    await act(async () => root.unmount());
   });
 
   it("keeps reminder details collapsed until the compact primary switch is enabled", async () => {

@@ -5,6 +5,10 @@ use tauri::{
 };
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+mod daily_summary;
+mod quick_capture;
+mod selection;
+
 #[cfg(windows)]
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 
@@ -812,6 +816,13 @@ pub fn run() {
             set_background_appearance,
             set_background_visible,
             quit_app,
+            selection::capture_selected_text,
+            quick_capture::capture_quick_add_text,
+            quick_capture::set_double_ctrl_shortcut,
+            daily_summary::get_daily_summary_config,
+            daily_summary::save_daily_summary_config,
+            daily_summary::clear_daily_summary_config,
+            daily_summary::generate_daily_summary,
             show_reminder_notification
         ])
         .setup(|app| {
@@ -821,6 +832,10 @@ pub fn run() {
                 setup_background_layer(app)?;
             }
             setup_tray(app)?;
+            #[cfg(windows)]
+            if let Err(error) = quick_capture::start(app.handle().clone()) {
+                eprintln!("启动快捷添加监听失败: {error}");
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -835,17 +850,8 @@ pub fn run() {
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                if let Err(error) = window.hide() {
-                    eprintln!("隐藏窗口失败: {error}");
-                }
-                #[cfg(windows)]
-                {
-                    use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
-                    let hwnd = BACKGROUND_HWND.load(Ordering::Relaxed)
-                        as windows_sys::Win32::Foundation::HWND;
-                    if !hwnd.is_null() {
-                        unsafe { ShowWindow(hwnd, SW_HIDE) };
-                    }
+                if let Err(error) = window.app_handle().emit("window-close-requested", ()) {
+                    eprintln!("请求选择窗口关闭方式失败: {error}");
                 }
             }
         })

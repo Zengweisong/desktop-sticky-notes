@@ -22,7 +22,7 @@ describe("normalizeSettings", () => {
     expect(settings.opacity).toBe(64);
     expect(settings.theme).toBe("dark");
     expect(settings.alwaysOnTop).toBe(false);
-    expect(settings.fontSize).toBe("medium");
+    expect(settings.fontSize).toBe(16);
     expect(settings.window).toEqual({
       x: -1200,
       y: 80,
@@ -39,9 +39,17 @@ describe("normalizeSettings", () => {
       windowState: { x: 10, y: 20, width: 410, height: 610, maximized: true, scaleFactor: 1.5 }
     });
 
-    expect(settings.fontSize).toBe("large");
+    expect(settings.fontSize).toBe(18);
     expect(settings.window.maximized).toBe(true);
     expect(settings.window.scaleFactor).toBe(1.5);
+  });
+
+  it("migrates the former font presets and preserves supported slider positions", () => {
+    expect(normalizeSettings({ fontSize: "small" }).fontSize).toBe(14);
+    expect(normalizeSettings({ fontSize: "medium" }).fontSize).toBe(16);
+    expect(normalizeSettings({ fontSize: 15 }).fontSize).toBe(15);
+    expect(normalizeSettings({ fontSize: 17 }).fontSize).toBe(17);
+    expect(normalizeSettings({ fontSize: 100 }).fontSize).toBe(18);
   });
 
   it("keeps valid task filters, migrates today, and rejects stale filter values", () => {

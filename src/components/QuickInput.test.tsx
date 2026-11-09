@@ -2,12 +2,11 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Category } from "../types/category";
 import { QuickInput } from "./QuickInput";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("QuickInput category menu", () => {
+describe("QuickInput", () => {
   let container: HTMLDivElement | null = null;
 
   afterEach(() => {
@@ -15,69 +14,29 @@ describe("QuickInput category menu", () => {
     container = null;
   });
 
-  it("raises the open menu above later content and selects another category", async () => {
-    container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-    const onCategoryChange = vi.fn();
-
-    await act(async () => root.render(<QuickInput categories={categories} categoryId={1}
-      defaultToToday onCategoryChange={onCategoryChange} onAdd={vi.fn().mockResolvedValue(true)} />));
-
-    const trigger = container.querySelector<HTMLButtonElement>('[aria-label="选择所属类别"]')!;
-    await act(async () => trigger.click());
-    expect(container.querySelector(".quick-input-wrap")?.classList.contains("category-menu-open")).toBe(true);
-    expect(container.querySelector(".quick-category-menu")).not.toBeNull();
-
-    const work = [...container.querySelectorAll<HTMLButtonElement>('[role="option"]')]
-      .find((button) => button.textContent?.includes("工作"));
-    expect(work).toBeDefined();
-    await act(async () => work!.click());
-
-    expect(onCategoryChange).toHaveBeenCalledWith(2);
-    expect(container.querySelector(".quick-category-menu")).toBeNull();
-    expect(container.querySelector(".quick-input-wrap")?.classList.contains("category-menu-open")).toBe(false);
-    await act(async () => root.unmount());
-  });
-
-  it("uses the top category only and groups priority with the reminder switch", async () => {
+  it.each([false, true])("uses the selected category without a separate picker (minimal: %s)", async (minimal) => {
     container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
     const onAdd = vi.fn().mockResolvedValue(true);
 
-    await act(async () => root.render(<QuickInput categories={categories} categoryId={2}
-      defaultToToday onCategoryChange={vi.fn()} onAdd={onAdd} />));
+    await act(async () => root.render(<QuickInput categoryId={2} minimal={minimal} defaultToToday onAdd={onAdd} />));
 
+    expect(container.querySelector('[aria-label="选择所属类别"]')).toBeNull();
     await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="时间与重复设置"]')!.click());
     const primaryRow = container.querySelector(".schedule-primary-row");
-    expect(primaryRow?.querySelector('select[aria-label="优先级"]')).not.toBeNull();
+    expect(primaryRow?.querySelector('[role="combobox"][aria-label="优先级"]')).not.toBeNull();
     expect(primaryRow?.querySelector('[role="switch"][aria-label="提醒"]')).not.toBeNull();
-    expect(container.querySelector('select[aria-label="所属分类"]')).toBeNull();
+    expect(container.querySelector('[role="combobox"][aria-label="所属分类"]')).toBeNull();
     expect(container.textContent).not.toContain("分类与优先级");
 
     const input = container.querySelector<HTMLTextAreaElement>('textarea')!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "只使用顶部分类");
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "使用所选分类");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="添加事项"]')!.click());
-    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ title: "只使用顶部分类", categoryId: 2 }));
-    await act(async () => root.unmount());
-  });
-
-  it("hides the category picker and keeps a compact row in minimal mode", async () => {
-    container = document.createElement("div");
-    document.body.append(container);
-    const root = createRoot(container);
-
-    await act(async () => root.render(<QuickInput categories={categories} categoryId={1} minimal
-      defaultToToday onCategoryChange={vi.fn()} onAdd={vi.fn().mockResolvedValue(true)} />));
-
-    expect(container.querySelector('[aria-label="选择所属类别"]')).toBeNull();
-    expect(container.querySelector(".quick-input-wrap")?.classList.contains("minimal")).toBe(true);
-    expect(container.querySelector('[aria-label="时间与重复设置"]')).not.toBeNull();
-    expect(container.querySelector('[aria-label="添加事项"]')).not.toBeNull();
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ title: "使用所选分类", categoryId: 2 }));
     await act(async () => root.unmount());
   });
 
@@ -87,8 +46,7 @@ describe("QuickInput category menu", () => {
     const root = createRoot(container);
     const onAdd = vi.fn().mockResolvedValue(true);
 
-    await act(async () => root.render(<QuickInput categories={categories} categoryId={1}
-      defaultToToday onCategoryChange={vi.fn()} onAdd={onAdd} />));
+    await act(async () => root.render(<QuickInput categoryId={1} defaultToToday onAdd={onAdd} />));
     const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "中文输入");
@@ -113,8 +71,7 @@ describe("QuickInput category menu", () => {
     const root = createRoot(container);
     const onAdd = vi.fn().mockResolvedValue(true);
 
-    await act(async () => root.render(<QuickInput categories={categories} categoryId={2}
-      defaultToToday onCategoryChange={vi.fn()} onAdd={onAdd} />));
+    await act(async () => root.render(<QuickInput categoryId={2} defaultToToday onAdd={onAdd} />));
     const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "正常新增");
@@ -137,8 +94,7 @@ describe("QuickInput category menu", () => {
     const root = createRoot(container);
     const onAdd = vi.fn().mockResolvedValue(true);
 
-    await act(async () => root.render(<QuickInput categories={categories} categoryId={1}
-      defaultToToday={false} onCategoryChange={vi.fn()} onAdd={onAdd} />));
+    await act(async () => root.render(<QuickInput categoryId={null} defaultToToday={false} onAdd={onAdd} />));
     const input = container.querySelector<HTMLTextAreaElement>("textarea")!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "稍后整理");
@@ -147,13 +103,89 @@ describe("QuickInput category menu", () => {
     });
 
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({
-      title: "稍后整理", scheduledDate: null, scheduledTime: null, scheduledAt: null
+      title: "稍后整理", categoryId: null, scheduledDate: null, scheduledTime: null, scheduledAt: null
     }));
     await act(async () => root.unmount());
   });
-});
 
-const categories: Category[] = [
-  { id: 1, name: "未分类", color: "#9aa6b2", icon: null, sortOrder: 10, createdAt: "2026-07-17", isSystem: true },
-  { id: 2, name: "工作", color: "#5794d8", icon: null, sortOrder: 20, createdAt: "2026-07-17", isSystem: false }
-];
+  it("uses the selected calendar date for consecutive additions even when default-today is off", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onAdd = vi.fn().mockResolvedValue(true);
+    const render = (defaultDate: string | null) => act(async () => root.render(
+      <QuickInput categoryId={2} defaultToToday={false} defaultDate={defaultDate} onAdd={onAdd} />
+    ));
+    const submit = async () => act(async () => {
+      const input = container!.querySelector<HTMLTextAreaElement>("textarea")!;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "日历事项");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+
+    await render("2026-12-23");
+    await submit();
+    await submit();
+    expect(onAdd.mock.calls.slice(0, 2).map(([note]) => note.scheduledDate)).toEqual(["2026-12-23", "2026-12-23"]);
+    await render("2027-01-04");
+    await submit();
+    expect(onAdd).toHaveBeenLastCalledWith(expect.objectContaining({ scheduledDate: "2027-01-04", scheduledTime: null }));
+    await render(null);
+    await submit();
+    expect(onAdd).toHaveBeenLastCalledWith(expect.objectContaining({ scheduledDate: null }));
+    await act(async () => root.unmount());
+  });
+
+  it("keeps an explicitly edited date when the selected calendar date changes", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onAdd = vi.fn().mockResolvedValue(true);
+    const render = (defaultDate: string) => act(async () => root.render(
+      <QuickInput categoryId={null} defaultToToday defaultDate={defaultDate} onAdd={onAdd} />
+    ));
+    await render("2026-12-23");
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="时间与重复设置"]')!.click());
+    await act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="选择日期"]')!.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="2026年12月25日星期五"]')!.click());
+    await render("2027-01-04");
+    await act(async () => {
+      const input = container!.querySelector<HTMLTextAreaElement>("textarea")!;
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "手动安排");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    });
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ scheduledDate: "2026-12-25" }));
+    await act(async () => root.unmount());
+  });
+
+  it("collapses on outside presses while retaining the draft and allowing portaled choices", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => root.render(<>
+      <header>标题栏</header>
+      <QuickInput categoryId={null} defaultToToday onAdd={vi.fn()} />
+      <footer>内容区</footer>
+    </>));
+    const press = async (element: Element) => act(async () => {
+      element.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    });
+    const open = async () => act(async () => container!.querySelector<HTMLButtonElement>('[aria-label="时间与重复设置"]')!.click());
+    await open();
+    await press(container.querySelector(".quick-advanced-panel")!);
+    expect(container.querySelector(".quick-advanced-panel")).not.toBeNull();
+    await act(async () => container!.querySelector<HTMLButtonElement>('[role="combobox"][aria-label="优先级"]')!.click());
+    const urgent = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((option) => option.textContent === "紧急")!;
+    await press(urgent);
+    await act(async () => urgent.click());
+    expect(container.querySelector(".quick-advanced-panel")).not.toBeNull();
+    await press(container.querySelector("header")!);
+    expect(container.querySelector(".quick-advanced-panel")).toBeNull();
+    await open();
+    expect(container.querySelector('[role="combobox"][aria-label="优先级"]')?.textContent).toBe("紧急");
+    await press(container.querySelector("footer")!);
+    expect(container.querySelector(".quick-advanced-panel")).toBeNull();
+    await act(async () => root.unmount());
+  });
+});

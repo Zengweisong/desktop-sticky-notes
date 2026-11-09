@@ -9,6 +9,7 @@ import type { Note, NoteInput, NoteUpdate } from "../types/note";
 import type { RepeatSeries } from "../types/repeat";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { NoteCard } from "./NoteCard";
+import { SelectField } from "./SelectField";
 
 interface Props {
   columns: BoardColumn[];
@@ -17,6 +18,7 @@ interface Props {
   repeatSeries: RepeatSeries[];
   loading: boolean;
   minimal?: boolean;
+  showCompleted?: boolean;
   selectedColumnId: string | null;
   onSelectedColumnChange: (id: string | null) => void;
   onAdd: (input: NoteInput) => Promise<boolean>;
@@ -25,7 +27,7 @@ interface Props {
   onTogglePinned: (note: Note) => Promise<boolean>;
   onToggleRepeatActive: (series: RepeatSeries) => Promise<boolean>;
   onDelete: (id: number, scope?: "occurrence" | "series") => Promise<boolean>;
-  onMoveNote: (id: number, columnId: string, targetId: number | null, position?: "before" | "after") => Promise<boolean>;
+  onMoveNote: (id: number, columnId: string, targetId: number | null, position: "before" | "after") => Promise<boolean>;
   onCreateColumn: (name: string) => Promise<boolean>;
   onRenameColumn: (id: string, name: string) => Promise<boolean>;
   onDeleteColumn: (id: string, moveToId?: string) => Promise<boolean>;
@@ -33,7 +35,6 @@ interface Props {
 }
 
 type CardDrop = { columnId: string; targetId: number | null; position: "before" | "after" };
-type UndoMove = { noteId: number; columnId: string; targetId: number | null; position: "before" | "after" };
 
 export function BoardView(props: Props) {
   const { columns, notes, categories, repeatSeries, loading } = props;
@@ -53,12 +54,10 @@ export function BoardView(props: Props) {
   const [dragNoteId, setDragNoteId] = useState<number | null>(null);
   const [dragPoint, setDragPoint] = useState({ x: 0, y: 0 });
   const [cardDrop, setCardDrop] = useState<CardDrop | null>(null);
-  const [undoMove, setUndoMove] = useState<UndoMove | null>(null);
   const [columnDragId, setColumnDragId] = useState<string | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: number; startX: number; startY: number; active: boolean } | null>(null);
   const dropRef = useRef<CardDrop | null>(null);
-  const undoRef = useRef<UndoMove | null>(null);
   const deleteTimerRef = useRef<number | null>(null);
   const pendingDeleteRef = useRef<Note | null>(null);
   const deleteActionRef = useRef(props.onDelete);
@@ -89,37 +88,15 @@ export function BoardView(props: Props) {
         setAddingIn(null); setAddingColumn(false); setRenamingColumnId(null);
         setMenuNoteId(null); setMenuColumnId(null); setOpenedNote(null);
       }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z" && undoRef.current) {
-        event.preventDefault();
-        const previous = undoRef.current;
-        undoRef.current = null; setUndoMove(null);
-        void props.onMoveNote(previous.noteId, previous.columnId, previous.targetId, previous.position);
-      }
     };
     window.addEventListener("keydown", keyboard);
     return () => window.removeEventListener("keydown", keyboard);
-  }, [props.onMoveNote]);
-
-  useEffect(() => {
-    if (!undoMove) return;
-    const timer = window.setTimeout(() => { undoRef.current = null; setUndoMove(null); }, 4500);
-    return () => window.clearTimeout(timer);
-  }, [undoMove]);
+  }, []);
 
   useEffect(() => () => {
     if (deleteTimerRef.current != null) window.clearTimeout(deleteTimerRef.current);
     if (pendingDeleteRef.current) void deleteActionRef.current(pendingDeleteRef.current.id);
   }, []);
-
-  const rememberOrigin = (note: Note): UndoMove => {
-    const siblings = byColumn.get(note.boardColumnId) || [];
-    const index = siblings.findIndex((item) => item.id === note.id);
-    if (index >= 0 && index < siblings.length - 1) {
-      return { noteId: note.id, columnId: note.boardColumnId, targetId: siblings[index + 1].id, position: "before" };
-    }
-    if (index > 0) return { noteId: note.id, columnId: note.boardColumnId, targetId: siblings[index - 1].id, position: "after" };
-    return { noteId: note.id, columnId: note.boardColumnId, targetId: null, position: "after" };
-  };
 
   const beginCardDrag = (event: React.PointerEvent<HTMLButtonElement>, note: Note) => {
     if (event.button !== 0) return;
@@ -127,7 +104,6 @@ export function BoardView(props: Props) {
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { id: note.id, startX: event.clientX, startY: event.clientY, active: false };
     setDragPoint({ x: event.clientX, y: event.clientY });
-    undoRef.current = rememberOrigin(note);
   };
 
   const moveCardDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -156,11 +132,7 @@ export function BoardView(props: Props) {
     const drag = dragRef.current;
     const target = dropRef.current;
     if (drag?.active && target) {
-      const previous = undoRef.current;
-      void props.onMoveNote(drag.id, target.columnId, target.targetId, target.position).then((ok) => {
-        if (ok && previous) { undoRef.current = previous; setUndoMove(previous); }
-        else { undoRef.current = null; setUndoMove(null); }
-      });
+      void props.onMoveNote(drag.id, target.columnId, target.targetId, target.position);
       props.onSelectedColumnChange(target.columnId);
     }
     dragRef.current = null; dropRef.current = null;
@@ -221,7 +193,7 @@ export function BoardView(props: Props) {
   return <>
     <div className="board-viewport" ref={viewportRef}>
       <div className="board-track">
-        {columns.map((column) => {
+        {columns.filter((column) => props.showCompleted || column.status !== "completed").map((column) => {
           const columnNotes = byColumn.get(column.id) || [];
           const selected = props.selectedColumnId === column.id;
           return <section key={column.id} className={`board-column ${selected ? "selected" : ""} ${cardDrop?.columnId === column.id ? "drop-active" : ""} ${columnDragId === column.id ? "column-dragging" : ""}`}
@@ -301,15 +273,11 @@ export function BoardView(props: Props) {
     {dragNoteId != null && <div className="board-drag-preview" style={{ left: dragPoint.x + 12, top: dragPoint.y + 10 }}>
       {notes.find((note) => note.id === dragNoteId)?.title}
     </div>}
-    {undoMove && <div className="board-undo-toast"><span>事项已移动</span><button onClick={() => {
-      const previous = undoRef.current; undoRef.current = null; setUndoMove(null);
-      if (previous) void props.onMoveNote(previous.noteId, previous.columnId, previous.targetId, previous.position);
-    }}>撤销</button></div>}
     {pendingDeleteNote && <div className="board-undo-toast board-delete-undo"><span>事项已删除</span><button onClick={undoDelete}>撤销</button></div>}
 
     {selectedOpenedNote && openedNote && <div className="dialog-backdrop board-detail-backdrop" onMouseDown={() => setOpenedNote(null)}>
-      <div className="board-detail-dialog" onMouseDown={(event) => event.stopPropagation()}>
-        <div className="board-detail-heading"><strong>事项详情</strong><button onClick={() => setOpenedNote(null)}><X size={16} /></button></div>
+      <div className="board-detail-dialog" role="dialog" aria-modal="true" aria-label="事项详情" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="board-detail-heading"><strong>事项详情</strong><button aria-label="关闭详情" onClick={() => setOpenedNote(null)}><X size={16} /></button></div>
         <NoteCard key={`${openedNote.id}-${openedNote.edit}`} note={selectedOpenedNote} repeatSeries={selectedSeries}
           categories={categories} startEditing={openedNote.edit} onPointerDown={() => undefined} onPointerMove={() => undefined}
           onPointerUp={() => undefined} onPointerCancel={() => undefined}
@@ -327,9 +295,9 @@ export function BoardView(props: Props) {
       <div className="confirm-dialog board-delete-column-dialog" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <h3>删除“{deletingColumn.name}”？</h3>
         {deletingCount ? <><p>栏目内有 {deletingCount} 项，请先选择要移动到的栏目。事项不会被删除。</p>
-          <select value={moveDeletedNotesTo} onChange={(event) => setMoveDeletedNotesTo(event.target.value)}>
-            {columns.filter((column) => column.id !== deletingColumn.id).map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}
-          </select></> : <p>这个栏目没有事项，可以安全删除。</p>}
+          <SelectField label="移动到栏目" value={moveDeletedNotesTo} onChange={setMoveDeletedNotesTo}
+            options={columns.filter((column) => column.id !== deletingColumn.id).map((column) => ({ value: column.id, label: column.name }))} />
+        </> : <p>这个栏目没有事项，可以安全删除。</p>}
         <div className="dialog-actions"><button onClick={() => setDeleteColumnId(null)}>取消</button><button className="danger" onClick={() => {
           void props.onDeleteColumn(deletingColumn.id, deletingCount ? moveDeletedNotesTo : undefined).then((ok) => ok && setDeleteColumnId(null));
         }}>删除栏目</button></div>
