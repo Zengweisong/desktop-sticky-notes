@@ -5,6 +5,7 @@ export const MIN_FONT_SIZE = 14;
 export const MAX_FONT_SIZE = 18;
 export type ViewMode = "list" | "board" | "calendar";
 export type PriorityFilter = "all" | "low" | "normal" | "high";
+export type CloseAction = "ask" | "minimize" | "quit";
 
 export interface WindowState {
   x: number | null;
@@ -22,6 +23,7 @@ export interface AppSettings {
   alwaysOnTop: boolean;
   launchOnStartup: boolean;
   showOnStartup: boolean;
+  closeAction: CloseAction;
   showCompleted: boolean;
   completedSectionExpanded: boolean;
   showTodayOnStartup: boolean;
@@ -46,6 +48,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   alwaysOnTop: true,
   launchOnStartup: false,
   showOnStartup: true,
+  closeAction: "ask",
   showCompleted: false,
   completedSectionExpanded: false,
   showTodayOnStartup: true,

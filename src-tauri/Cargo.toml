@@ -23,11 +23,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-notification = "2"
 reqwest = { version = "0.13", default-features = false, features = ["json", "native-tls"] }
+rusqlite = "0.32"
+chrono = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = ["Win32_System_Com", "Win32_UI_Accessibility"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_Security_Credentials", "Win32_System_DataExchange", "Win32_System_LibraryLoader", "Win32_System_Memory", "Win32_System_Threading", "Win32_UI_Controls", "Win32_UI_WindowsAndMessaging"] }
 tauri-winrt-notification = "0.7.3"
-
-[dev-dependencies]
-rusqlite = "0.32"

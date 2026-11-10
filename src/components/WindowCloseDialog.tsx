@@ -41,7 +41,7 @@ export function WindowCloseDialog({ open, busy, onCancel, onChoose }: Props) {
       onMouseDown={(event) => event.stopPropagation()}>
       <div className="window-close-heading"><h3 id={`${id}-title`}>关闭还是最小化？</h3>
         <button type="button" disabled={busy} onClick={onCancel} aria-label="取消关闭"><X size={16} /></button></div>
-      <p id={`${id}-description`}>最小化到托盘后，提醒和快捷键仍可使用；关闭应用将退出程序。</p>
+      <p id={`${id}-description`}>最小化到托盘后，提醒和快捷键仍可使用；关闭应用将退出程序。选择后会自动记住，可在设置中修改。</p>
       <div className="dialog-actions">
         <button ref={minimizeRef} type="button" disabled={busy} onClick={() => void onChoose("minimize")}>最小化到托盘</button>
         <button type="button" className="danger" disabled={busy} onClick={() => void onChoose("quit")}>关闭应用</button>

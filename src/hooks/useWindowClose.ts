@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { CloseAction } from "../types/settings";
 
 interface Options {
+  closeAction: CloseAction;
+  rememberAction: (action: Exclude<CloseAction, "ask">) => Promise<void>;
   hideWindow: () => Promise<void>;
   beforeClose: () => Promise<void>;
   onError: (message: string) => void;
@@ -14,17 +17,7 @@ export function useWindowClose(options: Options) {
   const pending = useRef(false);
   const latest = useRef(options);
   latest.current = options;
-  const requestClose = useCallback(() => setOpen(true), []);
   const cancel = useCallback(() => { if (!pending.current) setOpen(false); }, []);
-
-  useEffect(() => {
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    void listen("window-close-requested", requestClose).then((stop) => {
-      if (disposed) stop(); else unlisten = stop;
-    }).catch(() => latest.current.onError("无法监听窗口关闭操作"));
-    return () => { disposed = true; unlisten?.(); };
-  }, [requestClose]);
 
   const choose = useCallback(async (action: "quit" | "minimize") => {
     if (pending.current) return;
@@ -32,6 +25,7 @@ export function useWindowClose(options: Options) {
     setBusy(true);
     try {
       await latest.current.beforeClose();
+      if (latest.current.closeAction !== action) await latest.current.rememberAction(action);
       if (action === "quit") {
         await invoke("quit_app");
       } else {
@@ -46,6 +40,22 @@ export function useWindowClose(options: Options) {
       setBusy(false);
     }
   }, []);
+
+  const requestClose = useCallback(() => {
+    if (pending.current) return;
+    const action = latest.current.closeAction;
+    if (action === "ask") setOpen(true);
+    else void choose(action);
+  }, [choose]);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void listen("window-close-requested", requestClose).then((stop) => {
+      if (disposed) stop(); else unlisten = stop;
+    }).catch(() => latest.current.onError("无法监听窗口关闭操作"));
+    return () => { disposed = true; unlisten?.(); };
+  }, [requestClose]);
 
   return { open, busy, requestClose, cancel, choose };
 }

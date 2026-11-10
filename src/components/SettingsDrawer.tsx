@@ -6,6 +6,8 @@ import { MAX_FONT_SIZE, MIN_FONT_SIZE, type AppSettings, type ThemeName } from "
 import { exportNotes, importNotes } from "../services/noteService";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { OpacitySlider } from "./OpacitySlider";
+import { ChatSyncSettings } from "./ChatSyncSettings";
+import { SelectField } from "./SelectField";
 
 interface Props {
   open: boolean; settings: AppSettings; completedCount: number; onClose: () => void;
@@ -82,8 +84,9 @@ export function SettingsDrawer(props: Props) {
     <div className={`drawer-backdrop ${props.open ? "visible" : ""}`} onClick={props.onClose} />
     <aside className={`settings-drawer ${props.open ? "open" : ""}`} aria-hidden={!props.open}
       role="dialog" aria-modal="true" aria-labelledby="settings-title">
-      <div className="drawer-header"><div><h2 id="settings-title">设置</h2><p>让便签更适合你的桌面</p></div><button ref={closeButtonRef} type="button" aria-label="关闭设置" onClick={props.onClose}><X size={18} /></button></div>
+      <div className="drawer-header"><h2 id="settings-title">设置</h2><button ref={closeButtonRef} type="button" aria-label="关闭设置" onClick={props.onClose}><X size={18} /></button></div>
       <div className="drawer-content">
+        {props.open && <ChatSyncSettings onChanged={props.onImported} />}
         <OpacitySlider value={props.settings.opacity} onChange={(opacity) => void props.onUpdate({ opacity })} />
         <div className="setting-block">
           <div className="setting-heading">
@@ -106,23 +109,31 @@ export function SettingsDrawer(props: Props) {
           <Toggle label="开机自动启动" checked={props.settings.launchOnStartup} onChange={(enabled) => void props.onLaunchOnStartupChange(enabled)} />
           <Toggle label="应用启动时显示窗口" checked={props.settings.showOnStartup} onChange={(showOnStartup) => void props.onUpdate({ showOnStartup })} />
         </div>
+        <div className="setting-block"><div className="setting-heading"><span>关闭窗口时</span></div>
+          <SelectField label="关闭窗口时" value={props.settings.closeAction}
+            options={[
+              { value: "ask", label: "每次询问" },
+              { value: "minimize", label: "最小化到托盘" },
+              { value: "quit", label: "关闭应用" }
+            ]} onChange={(closeAction) => void props.onUpdate({ closeAction })} />
+        </div>
         <div className="setting-block"><div className="setting-heading"><span>事项显示</span></div>
           <div className="setting-list display-setting-list">
-            <Toggle label="极简模式" description="各视图中的事项只显示标题；点击事项可查看并编辑全部信息。"
+            <Toggle label="极简模式"
               checked={props.settings.minimalMode}
               onChange={(minimalMode) => void props.onUpdate({ minimalMode })} />
-            <Toggle label="启动时只显示今天事项" description="开启后立即切换到“今天”，以后每次启动也默认如此；仍可临时选择其他筛选。"
+            <Toggle label="启动时只显示今天事项"
               checked={props.settings.showTodayOnStartup}
               onChange={(showTodayOnStartup) => void props.onUpdate(showTodayOnStartup
                 ? { showTodayOnStartup, taskTimeFilter: "today" }
                 : { showTodayOnStartup })} />
-            <Toggle label="显示已完成事项" description="开启后，在列表底部显示已完成事项，并在看板中显示“已完成”栏目。"
+            <Toggle label="显示已完成事项"
               checked={props.settings.showCompleted} onChange={(showCompleted) => void props.onUpdate({ showCompleted })} />
           </div>
         </div>
         <div className="setting-block"><div className="setting-heading"><span>快捷添加</span></div>
           <div className="setting-list display-setting-list">
-            <Toggle label="默认安排到今天" description="关闭后，直接添加的事项不设日期；仍可在时间设置中手动选择。"
+            <Toggle label="默认安排到今天"
               checked={props.settings.quickAddDefaultsToToday}
               onChange={(quickAddDefaultsToToday) => void props.onUpdate({ quickAddDefaultsToToday })} />
           </div>
@@ -162,7 +173,7 @@ export function SettingsDrawer(props: Props) {
               saveShortcut("Ctrl+Ctrl");
             } else taps.upAt = now;
           }}>
-          <Keyboard size={18} /><div><strong>快速呼出</strong><span>{recordingShortcut ? "请按组合键或双击 Ctrl，Esc 取消" : "选中文字优先，否则添加 3 秒内复制的文字；支持双击 Ctrl"}</span></div>
+          <Keyboard size={18} /><div><strong>快速呼出</strong>{recordingShortcut && <span>请按组合键或双击 Ctrl，Esc 取消</span>}</div>
           <span className="shortcut-keys">{(recordingShortcut ? ["等待按键…"] : props.settings.shortcut.split("+")).map((key, index) =>
             <span className="shortcut-key-part" key={`${key}-${index}`}><kbd>{key}</kbd>{index < (recordingShortcut ? 0 : props.settings.shortcut.split("+").length - 1) && <b>+</b>}</span>)}</span>
         </button>
@@ -178,8 +189,8 @@ export function SettingsDrawer(props: Props) {
   </>;
 }
 
-function Toggle({ label, description, checked, onChange }: { label: string; description?: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <label className="toggle-row"><span className="toggle-copy"><strong>{label}</strong>{description && <small>{description}</small>}</span>
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return <label className="toggle-row"><span className="toggle-copy"><strong>{label}</strong></span>
     <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /><i /></label>;
 }
 
