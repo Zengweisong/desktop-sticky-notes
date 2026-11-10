@@ -867,7 +867,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-sticky-notes"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "reqwest",
