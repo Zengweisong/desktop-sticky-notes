@@ -85,6 +85,8 @@ export function normalizeSettings(value: unknown): AppSettings {
     alwaysOnTop: booleanValue(saved.alwaysOnTop, DEFAULT_SETTINGS.alwaysOnTop),
     launchOnStartup: booleanValue(saved.launchOnStartup, DEFAULT_SETTINGS.launchOnStartup),
     showOnStartup: booleanValue(saved.showOnStartup, DEFAULT_SETTINGS.showOnStartup),
+    closeAction: saved.closeAction === "minimize" || saved.closeAction === "quit"
+      ? saved.closeAction : DEFAULT_SETTINGS.closeAction,
     showCompleted: booleanValue(saved.showCompleted, DEFAULT_SETTINGS.showCompleted),
     completedSectionExpanded: booleanValue(saved.completedSectionExpanded, DEFAULT_SETTINGS.completedSectionExpanded),
     showTodayOnStartup: booleanValue(saved.showTodayOnStartup, DEFAULT_SETTINGS.showTodayOnStartup),

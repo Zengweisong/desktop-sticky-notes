@@ -28,7 +28,11 @@ describe("window close choice", () => {
       requestFromOs = callback;
       return stop;
     });
-    options = { hideWindow: vi.fn(async () => {}), beforeClose: vi.fn(async () => {}), onError: vi.fn() };
+    options = {
+      closeAction: "ask",
+      rememberAction: vi.fn(async (action) => { options.closeAction = action; }),
+      hideWindow: vi.fn(async () => {}), beforeClose: vi.fn(async () => {}), onError: vi.fn()
+    };
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -65,6 +69,7 @@ describe("window close choice", () => {
     expect(document.activeElement).toBe(button("最小化到托盘"));
     expect(options.hideWindow).not.toHaveBeenCalled();
     expect(native.invoke).not.toHaveBeenCalled();
+    expect(options.rememberAction).not.toHaveBeenCalled();
   });
 
   it("uses the same dialog for an OS close request", async () => {
@@ -104,6 +109,43 @@ describe("window close choice", () => {
     await act(async () => button("关闭应用").click());
     expect(order).toEqual(["save", "quit_app"]);
     expect(options.hideWindow).not.toHaveBeenCalled();
+    expect(options.rememberAction).toHaveBeenCalledWith("quit");
+  });
+
+  it("remembers minimizing and applies it to subsequent title bar and OS closes", async () => {
+    await open();
+    await act(async () => button("最小化到托盘").click());
+    expect(options.rememberAction).toHaveBeenCalledWith("minimize");
+    await open();
+    await act(async () => requestFromOs());
+    expect(options.hideWindow).toHaveBeenCalledTimes(3);
+    expect(options.rememberAction).toHaveBeenCalledOnce();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("uses the current preference and can return to asking from settings", async () => {
+    options.closeAction = "quit";
+    await act(async () => requestFromOs());
+    expect(native.invoke).toHaveBeenCalledWith("quit_app");
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    options.closeAction = "minimize";
+    await open();
+    expect(options.hideWindow).toHaveBeenCalledOnce();
+    options.closeAction = "ask";
+    await open();
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(options.rememberAction).not.toHaveBeenCalled();
+  });
+
+  it("waits for the preference to be saved before quitting and allows retry on failure", async () => {
+    options.rememberAction = vi.fn().mockRejectedValueOnce(new Error("disk unavailable")).mockResolvedValue(undefined);
+    await open();
+    await act(async () => button("关闭应用").click());
+    expect(options.onError).toHaveBeenCalledWith("关闭应用失败，请重试");
+    expect(native.invoke).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    await act(async () => button("关闭应用").click());
+    expect(native.invoke).toHaveBeenCalledWith("quit_app");
   });
 
   it("prevents a second action and cancellation while an operation is pending", async () => {

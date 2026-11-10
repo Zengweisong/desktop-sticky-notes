@@ -3,6 +3,14 @@ import { DEFAULT_SETTINGS } from "../types/settings";
 import { normalizeSettings, settingsForStartup } from "./settingsService";
 
 describe("normalizeSettings", () => {
+  it("asks on first use and restores only supported close preferences", () => {
+    expect(normalizeSettings({}).closeAction).toBe("ask");
+    for (const closeAction of ["ask", "minimize", "quit"] as const) {
+      expect(settingsForStartup(JSON.parse(JSON.stringify({ closeAction }))).closeAction).toBe(closeAction);
+    }
+    expect(normalizeSettings({ closeAction: "invalid" }).closeAction).toBe("ask");
+  });
+
   it("uses safe defaults for missing or damaged configuration", () => {
     expect(normalizeSettings("not-an-object")).toEqual(DEFAULT_SETTINGS);
     expect(normalizeSettings({ fontSize: "huge", window: { width: -1, height: Number.NaN } })).toEqual({

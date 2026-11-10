@@ -61,6 +61,11 @@ export default function App() {
   const quickCategoryId = prefs.settings.taskCategoryFilterId;
   const win = useMemo(() => getCurrentWindow(), []);
   const windowClose = useWindowClose({
+    closeAction: prefs.settings.closeAction,
+    rememberAction: async (closeAction) => {
+      await saveSettings({ ...useSettingsStore.getState().settings, closeAction });
+      useSettingsStore.getState().patchSettings({ closeAction });
+    },
     hideWindow: () => win.hide(),
     beforeClose: async () => { await windowStateManager.current?.flush(); },
     onError: errorToast
@@ -137,6 +142,27 @@ export default function App() {
     if (!ready) return;
     return startBackgroundTaskService(notes.refresh, errorToast);
   }, [ready, notes.refresh, errorToast]);
+
+  useEffect(() => {
+    if (!ready) return;
+    let disposed = false;
+    let pending = false;
+    const sync = async () => {
+      if (pending || disposed) return;
+      pending = true;
+      try {
+        const result = await invoke<{ changed: number }>("process_chat_sync");
+        if (!disposed && result.changed) {
+          await Promise.all([notes.refresh(), categories.refresh()]);
+          toast(`已从对话同步 ${result.changed} 条事项，可在设置中撤销`);
+        }
+      } catch { /* The sync settings retain the error and offer an explicit retry. */ }
+      finally { pending = false; }
+    };
+    void sync();
+    const timer = window.setInterval(() => void sync(), 4000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [ready, notes.refresh, categories.refresh, toast]);
 
   useEffect(() => {
     const focusNote = (event: Event) => {

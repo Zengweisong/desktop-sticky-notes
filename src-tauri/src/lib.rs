@@ -6,6 +6,7 @@ use tauri::{
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 mod daily_summary;
+mod chat_sync;
 mod quick_capture;
 mod selection;
 
@@ -823,6 +824,11 @@ pub fn run() {
             daily_summary::save_daily_summary_config,
             daily_summary::clear_daily_summary_config,
             daily_summary::generate_daily_summary,
+            chat_sync::get_chat_sync_status,
+            chat_sync::configure_chat_sync,
+            chat_sync::process_chat_sync,
+            chat_sync::retry_chat_sync,
+            chat_sync::undo_chat_sync,
             show_reminder_notification
         ])
         .setup(|app| {
