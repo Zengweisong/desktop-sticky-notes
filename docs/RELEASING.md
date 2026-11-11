@@ -6,6 +6,14 @@
 
 安装 Git、Node.js 22 和 GitHub CLI，执行 `gh auth login`。如推送 `.github/workflows/` 时提示缺少 workflow 权限，执行 `gh auth refresh -h github.com -s workflow` 并按提示完成授权。
 
+如果 Git 能访问 GitHub，而 `gh` 授权连接超时，GitHub CLI 可能没有使用 Git 的代理。在同一个 PowerShell 窗口中执行以下命令后重试（仅在 `git config --get http.proxy` 有值时使用）：
+
+```powershell
+$env:HTTPS_PROXY = git config --get http.proxy
+$env:HTTP_PROXY = $env:HTTPS_PROXY
+gh auth refresh -h github.com -s workflow
+```
+
 ## 每次发布
 
 下面以 **0.7.2** 为例，实际操作时换成下一个未使用的版本号。
