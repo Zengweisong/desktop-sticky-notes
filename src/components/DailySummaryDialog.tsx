@@ -111,7 +111,7 @@ export function DailySummaryDialog({ open, notes, onClose }: Props) {
           <label>模型<input name="model" required defaultValue={config?.model} maxLength={256} placeholder="填写服务商的模型 ID" /></label>
           <label>API 密钥<input type="password" name="apiKey" required={!config} autoComplete="off"
             maxLength={1024} placeholder={config ? "留空保留当前密钥" : "填写服务商的 API 密钥"} /></label>
-          <p>配置保存在 Windows 凭据管理器。更换 API 地址时，请填写对应的密钥。</p>
+          <p>支持 HTTP 和 HTTPS，HTTP 会明文传输密钥和内容。配置保存在 Windows 凭据管理器。更换 API 地址时，请填写对应的密钥。</p>
           <div className="summary-actions">
             <button className="summary-primary" disabled={!!busy} type="submit">{busy ? "正在保存…" : "保存配置"}</button>
             {config && <>

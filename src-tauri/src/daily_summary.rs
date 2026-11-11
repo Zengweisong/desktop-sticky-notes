@@ -27,9 +27,8 @@ impl Config {
 
 fn completion_endpoint(address: &str) -> Result<Url, String> {
     let mut url = Url::parse(address.trim()).map_err(|_| "请输入有效的 API 地址")?;
-    let local = matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
-    if url.scheme() != "https" && !(url.scheme() == "http" && local) {
-        return Err("API 地址需要使用 HTTPS，本机地址可使用 HTTP".into());
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("API 地址需要使用 HTTP 或 HTTPS".into());
     }
     if url.host().is_none()
         || !url.username().is_empty()
@@ -310,7 +309,24 @@ mod tests {
         );
         assert_eq!(completion_endpoint(full).unwrap().as_str(), full);
         assert!(completion_endpoint("http://127.0.0.1:8000/v1").is_ok());
-        assert!(completion_endpoint("http://example.com/v1").is_err());
+        for address in [
+            "http://localhost:8000/v1",
+            "http://[::1]:8000/v1",
+            "http://192.168.1.10:8000/v1",
+            "http://example.com/v1",
+        ] {
+            assert_eq!(
+                completion_endpoint(address).unwrap().as_str(),
+                format!("{address}/chat/completions")
+            );
+        }
+        let full_http = "http://example.com/v1/chat/completions";
+        assert_eq!(completion_endpoint(full_http).unwrap().as_str(), full_http);
+        assert!(completion_endpoint("ftp://example.com/v1").is_err());
+        assert!(completion_endpoint("file:///v1").is_err());
+        assert!(completion_endpoint("http://user:pass@example.com/v1").is_err());
+        assert!(completion_endpoint("http://example.com/v1?token=secret").is_err());
+        assert!(completion_endpoint("http://example.com/v1#fragment").is_err());
         assert!(completion_endpoint("https://user:pass@example.com/v1").is_err());
         assert!(completion_endpoint("https://example.com/v1?token=secret").is_err());
     }
